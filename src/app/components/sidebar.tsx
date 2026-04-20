@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Building2, TrendingUp, BarChart3, Calendar, ChevronDown, ChevronRight } from 'lucide-react';
+import { Building2, TrendingUp, BarChart3, Calendar, ChevronDown, ChevronRight, Database, CheckSquare, Target } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
 import logoImage from 'figma:asset/22188a559e2ae35bb209914ca8f5f374d6231efc.png';
 
@@ -16,34 +16,37 @@ export function Sidebar() {
 
   const allMenuItems: MenuItem[] = [
     { path: '/sales', icon: TrendingUp, label: '영업 이력 관리' },
-    { 
-      path: '/companies/korea', 
-      icon: Building2, 
+    {
+      path: '/companies/korea',
+      icon: Building2,
       label: 'BRYCENKOREA',
       children: [
         { path: '/companies/korea', label: 'KOREA 담당 기업 관리' },
         { path: '/companies/korea/personnel', label: 'KOREA 영업인력 관리' },
       ],
     },
-    { 
-      path: '/companies/japan', 
-      icon: Building2, 
+    {
+      path: '/companies/japan',
+      icon: Building2,
       label: 'BRYCENJAPAN',
       children: [
         { path: '/companies/japan', label: 'JAPAN 담당 기업 관리' },
         { path: '/companies/japan/personnel', label: 'JAPAN 영업인력 관리' },
       ],
     },
-    { 
-      path: '/companies/vietnam', 
-      icon: Building2, 
+    {
+      path: '/companies/vietnam',
+      icon: Building2,
       label: 'BRYCENVIETNAM',
       children: [
         { path: '/companies/vietnam', label: 'VIETNAM 담당 기업 관리' },
         { path: '/companies/vietnam/personnel', label: 'VIETNAM 영업인력 관리' },
       ],
     },
+    { path: '/company-data', icon: Database, label: '기업 정보 수집' },
+    { path: '/my-tasks', icon: CheckSquare, label: '나의 할일' },
     { path: '/dashboard', icon: BarChart3, label: '매출 예측 대시보드' },
+    { path: '/period-forecast', icon: Target, label: '기수별 예측 대시보드' },
     { path: '/schedule', icon: Calendar, label: '스케줄 관리' },
   ];
 

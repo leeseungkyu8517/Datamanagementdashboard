@@ -24,6 +24,8 @@ type Company = {
   totalAmount: string;
   status: string;
   statusColor: 'blue' | 'green' | 'yellow';
+  contactAttempts: number;
+  successfulContacts: number;
   managers: Manager[];
 };
 
@@ -40,6 +42,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,850,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm1', name: 'Nguyen Van An', position: 'Giám đốc', phone: '+84-90-123-4567', email: 'nva@vingroup.vn', department: 'Mua hàng' },
       { id: 'm2', name: 'Tran Thi Bich', position: 'Trưởng phòng', phone: '+84-90-234-5678', email: 'ttb@vingroup.vn', department: 'Mua hàng' },
@@ -57,6 +61,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,650,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm3', name: 'Pham Van Cuong', position: 'Giám đốc', phone: '+84-90-345-6789', email: 'pvc@viettel.vn', department: 'Thu mua' },
     ],
@@ -73,6 +79,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,320,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm4', name: 'Le Thi Dung', position: 'Phó giám đốc', phone: '+84-90-456-7890', email: 'ltd@fpt.vn', department: 'Mua sắm' },
       { id: 'm5', name: 'Hoang Van Hai', position: 'Trưởng phòng', phone: '+84-90-567-8901', email: 'hvh@fpt.vn', department: 'Mua sắm' },
@@ -90,6 +98,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,080,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm6', name: 'Vu Thi Kim', position: 'Giám đốc', phone: '+84-90-678-9012', email: 'vtk@vietnamairlines.com', department: 'Thu mua' },
     ],
@@ -106,6 +116,8 @@ const initialCompanies: Company[] = [
     totalAmount: '820,000,000',
     status: 'Đang thảo luận',
     statusColor: 'yellow',
+    contactAttempts: 8,
+    successfulContacts: 4,
     managers: [
       { id: 'm7', name: 'Dao Van Long', position: 'Trưởng phòng', phone: '+84-90-789-0123', email: 'dvl@masan.vn', department: 'Mua hàng' },
     ],
@@ -122,6 +134,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,720,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm8', name: 'Bui Van Minh', position: 'Giám đốc', phone: '+84-90-890-1234', email: 'bvm@pvn.vn', department: 'Thu mua' },
     ],
@@ -138,6 +152,8 @@ const initialCompanies: Company[] = [
     totalAmount: '950,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm9', name: 'Nguyen Thi Nga', position: 'Phó giám đốc', phone: '+84-90-901-2345', email: 'ntn@hoaphat.vn', department: 'Vật tư' },
     ],
@@ -154,6 +170,8 @@ const initialCompanies: Company[] = [
     totalAmount: '620,000,000',
     status: 'Đang thảo luận',
     statusColor: 'yellow',
+    contactAttempts: 8,
+    successfulContacts: 4,
     managers: [
       { id: 'm10', name: 'Phan Van Phong', position: 'Trưởng phòng', phone: '+84-90-012-3456', email: 'pvp@techcombank.vn', department: 'Mua sắm' },
     ],
@@ -170,6 +188,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,150,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm11', name: 'Tran Van Quang', position: 'Giám đốc', phone: '+84-90-123-4567', email: 'tvq@vinfast.vn', department: 'Thu mua' },
     ],
@@ -186,6 +206,8 @@ const initialCompanies: Company[] = [
     totalAmount: '680,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm12', name: 'Dang Thi Hoa', position: 'Trưởng phòng', phone: '+84-90-234-5678', email: 'dth@vng.vn', department: 'Mua hàng' },
     ],
@@ -202,6 +224,8 @@ const initialCompanies: Company[] = [
     totalAmount: '780,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm13', name: 'Vo Van Son', position: 'Phó giám đốc', phone: '+84-90-345-6789', email: 'vvs@sabeco.vn', department: 'Thu mua' },
     ],
@@ -218,6 +242,8 @@ const initialCompanies: Company[] = [
     totalAmount: '870,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm14', name: 'Le Van Tai', position: 'Giám đốc', phone: '+84-90-456-7890', email: 'lvt@thegioididong.com', department: 'Mua sắm' },
     ],
@@ -234,6 +260,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,420,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm15', name: 'Ha Thi Uyen', position: 'Phó giám đốc', phone: '+84-90-567-8901', email: 'htu@vietcombank.vn', department: 'Thu mua' },
     ],
@@ -250,6 +278,8 @@ const initialCompanies: Company[] = [
     totalAmount: '520,000,000',
     status: 'Đang thảo luận',
     statusColor: 'yellow',
+    contactAttempts: 8,
+    successfulContacts: 4,
     managers: [
       { id: 'm16', name: 'Nguyen Van Vinh', position: 'Trưởng phòng', phone: '+84-90-678-9012', email: 'nvv@novaland.vn', department: 'Mua hàng' },
     ],
@@ -266,6 +296,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,050,000,000',
     status: 'Đang giao dịch',
     statusColor: 'green',
+    contactAttempts: 12,
+    successfulContacts: 10,
     managers: [
       { id: 'm17', name: 'Tran Thi Xuan', position: 'Giám đốc', phone: '+84-90-789-0123', email: 'ttx@vinamilk.vn', department: 'Thu mua' },
     ],
@@ -346,7 +378,7 @@ export function CompanyVietnam() {
   const handleSaveCompany = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
+
     const newCompany: Company = {
       id: editingCompany?.id || Date.now().toString(),
       name: formData.get('name') as string,
@@ -359,6 +391,8 @@ export function CompanyVietnam() {
       totalAmount: editingCompany?.totalAmount || '0',
       status: formData.get('status') as string,
       statusColor: formData.get('statusColor') as 'blue' | 'green' | 'yellow',
+      contactAttempts: editingCompany?.contactAttempts || 0,
+      successfulContacts: editingCompany?.successfulContacts || 0,
       managers: editingCompany?.managers || [],
     };
 
@@ -367,7 +401,7 @@ export function CompanyVietnam() {
     } else {
       setCompanies([newCompany, ...companies]);
     }
-    
+
     setShowCompanyModal(false);
     setEditingCompany(null);
   };
@@ -491,6 +525,15 @@ export function CompanyVietnam() {
                         <div>
                           <span className="text-gray-500">총 거래액:</span>
                           <span className="ml-2 text-gray-900">{company.totalAmount}동</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">컨택률:</span>
+                          <span className="ml-2 text-gray-900 font-semibold">
+                            {((company.successfulContacts / company.contactAttempts) * 100).toFixed(1)}%
+                          </span>
+                          <span className="ml-2 text-xs text-gray-600">
+                            (컨택 {company.successfulContacts}건 / 시도 {company.contactAttempts}건)
+                          </span>
                         </div>
                       </div>
                     </div>

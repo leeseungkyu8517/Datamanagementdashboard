@@ -24,6 +24,8 @@ type Company = {
   totalAmount: string;
   status: string;
   statusColor: 'blue' | 'green' | 'yellow';
+  contactAttempts: number;
+  successfulContacts: number;
   managers: Manager[];
 };
 
@@ -40,6 +42,8 @@ const initialCompanies: Company[] = [
     totalAmount: '850,000,000',
     status: '거래중',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm1', name: '김영호', position: '구매팀장', phone: '010-1234-5678', email: 'kim.yh@samsung.com', department: '구매팀' },
       { id: 'm2', name: '이미선', position: '과장', phone: '010-2345-6789', email: 'lee.ms@samsung.com', department: '구매팀' },
@@ -57,6 +61,8 @@ const initialCompanies: Company[] = [
     totalAmount: '620,000,000',
     status: '거래중',
     statusColor: 'green',
+    contactAttempts: 10,
+    successfulContacts: 8,
     managers: [
       { id: 'm3', name: '박성민', position: '팀장', phone: '010-3456-7890', email: 'park.sm@lge.com', department: '조달팀' },
     ],
@@ -73,6 +79,8 @@ const initialCompanies: Company[] = [
     totalAmount: '430,000,000',
     status: '협의중',
     statusColor: 'yellow',
+    contactAttempts: 12,
+    successfulContacts: 7,
     managers: [
       { id: 'm4', name: '최동욱', position: '차장', phone: '010-4567-8901', email: 'choi.du@hyundai.com', department: '구매부' },
       { id: 'm5', name: '강은지', position: '대리', phone: '010-5678-9012', email: 'kang.ej@hyundai.com', department: '구매부' },
@@ -90,6 +98,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,200,000,000',
     status: '거래중',
     statusColor: 'green',
+    contactAttempts: 18,
+    successfulContacts: 16,
     managers: [
       { id: 'm6', name: '윤재현', position: '부장', phone: '010-6789-0123', email: 'yoon.jh@skhynix.com', department: '구매실' },
     ],
@@ -106,6 +116,8 @@ const initialCompanies: Company[] = [
     totalAmount: '380,000,000',
     status: '거래중',
     statusColor: 'green',
+    contactAttempts: 9,
+    successfulContacts: 7,
     managers: [
       { id: 'm7', name: '정수진', position: '팀장', phone: '010-7890-1234', email: 'jung.sj@naver.com', department: 'IT구매팀' },
     ],
@@ -122,6 +134,8 @@ const initialCompanies: Company[] = [
     totalAmount: '340,000,000',
     status: '거래중',
     statusColor: 'green',
+    contactAttempts: 8,
+    successfulContacts: 6,
     managers: [
       { id: 'm8', name: '김민수', position: '부장', phone: '010-8901-2345', email: 'kim.ms@kakao.com', department: '구매팀' },
     ],
@@ -138,6 +152,8 @@ const initialCompanies: Company[] = [
     totalAmount: '720,000,000',
     status: '거래',
     statusColor: 'green',
+    contactAttempts: 13,
+    successfulContacts: 11,
     managers: [
       { id: 'm9', name: '이철민', position: '차장', phone: '010-9012-3456', email: 'lee.cm@posco.com', department: '자재팀' },
     ],
@@ -154,6 +170,8 @@ const initialCompanies: Company[] = [
     totalAmount: '280,000,000',
     status: '협의중',
     statusColor: 'yellow',
+    contactAttempts: 10,
+    successfulContacts: 4,
     managers: [
       { id: 'm10', name: '박진우', position: '과장', phone: '010-0123-4567', email: 'park.jw@doosan.com', department: '구매팀' },
     ],
@@ -170,6 +188,8 @@ const initialCompanies: Company[] = [
     totalAmount: '310,000,000',
     status: '거래중',
     statusColor: 'green',
+    contactAttempts: 7,
+    successfulContacts: 5,
     managers: [
       { id: 'm11', name: '최민정', position: '팀장', phone: '010-1234-6789', email: 'choi.mj@cj.com', department: '구매팀' },
     ],
@@ -186,6 +206,8 @@ const initialCompanies: Company[] = [
     totalAmount: '420,000,000',
     status: '거래중',
     statusColor: 'green',
+    contactAttempts: 9,
+    successfulContacts: 6,
     managers: [
       { id: 'm12', name: '한지영', position: '차장', phone: '010-2345-7890', email: 'han.jy@lotte.com', department: '자재팀' },
     ],
@@ -202,6 +224,8 @@ const initialCompanies: Company[] = [
     totalAmount: '210,000,000',
     status: '협의중',
     statusColor: 'yellow',
+    contactAttempts: 8,
+    successfulContacts: 3,
     managers: [
       { id: 'm13', name: '서준호', position: '대리', phone: '010-3456-8901', email: 'seo.jh@gsconst.com', department: '구매팀' },
     ],
@@ -218,6 +242,8 @@ const initialCompanies: Company[] = [
     totalAmount: '560,000,000',
     status: '거래중',
     statusColor: 'green',
+    contactAttempts: 10,
+    successfulContacts: 8,
     managers: [
       { id: 'm14', name: '노승민', position: '팀장', phone: '010-4567-9012', email: 'no.sm@hanwha.com', department: '자재구매팀' },
     ],
@@ -234,6 +260,8 @@ const initialCompanies: Company[] = [
     totalAmount: '320,000,000',
     status: '거래중',
     statusColor: 'green',
+    contactAttempts: 6,
+    successfulContacts: 5,
     managers: [
       { id: 'm15', name: '김태현', position: '과장', phone: '010-5678-0123', email: 'kim.th@dsme.com', department: '구매팀' },
     ],
@@ -250,6 +278,8 @@ const initialCompanies: Company[] = [
     totalAmount: '150,000,000',
     status: '협의중',
     statusColor: 'yellow',
+    contactAttempts: 6,
+    successfulContacts: 2,
     managers: [
       { id: 'm16', name: '임하늘', position: '대리', phone: '010-6789-1234', email: 'lim.hn@coway.com', department: '구매팀' },
     ],
@@ -266,6 +296,8 @@ const initialCompanies: Company[] = [
     totalAmount: '190,000,000',
     status: '거래중',
     statusColor: 'green',
+    contactAttempts: 5,
+    successfulContacts: 4,
     managers: [
       { id: 'm17', name: '오지현', position: '과장', phone: '010-7890-2345', email: 'oh.jh@apgroup.com', department: '구매팀' },
     ],
@@ -347,7 +379,7 @@ export function CompanyKorea() {
   const handleSaveCompany = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
+
     const newCompany: Company = {
       id: editingCompany?.id || Date.now().toString(),
       name: formData.get('name') as string,
@@ -360,6 +392,8 @@ export function CompanyKorea() {
       totalAmount: editingCompany?.totalAmount || '0',
       status: formData.get('status') as string,
       statusColor: formData.get('statusColor') as 'blue' | 'green' | 'yellow',
+      contactAttempts: editingCompany?.contactAttempts || 0,
+      successfulContacts: editingCompany?.successfulContacts || 0,
       managers: editingCompany?.managers || [],
     };
 
@@ -368,7 +402,7 @@ export function CompanyKorea() {
     } else {
       setCompanies([newCompany, ...companies]);
     }
-    
+
     setShowCompanyModal(false);
     setEditingCompany(null);
   };
@@ -491,6 +525,15 @@ export function CompanyKorea() {
                         <div>
                           <span className="text-gray-500">총 거래액:</span>
                           <span className="ml-2 text-gray-900">{company.totalAmount}원</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">컨택률:</span>
+                          <span className="ml-2 text-gray-900 font-semibold">
+                            {((company.successfulContacts / company.contactAttempts) * 100).toFixed(1)}%
+                          </span>
+                          <span className="ml-2 text-xs text-gray-600">
+                            (컨택 {company.successfulContacts}건 / 시도 {company.contactAttempts}건)
+                          </span>
                         </div>
                       </div>
                     </div>

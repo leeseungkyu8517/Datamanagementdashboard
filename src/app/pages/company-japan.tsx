@@ -24,6 +24,8 @@ type Company = {
   totalAmount: string;
   status: string;
   statusColor: 'blue' | 'green' | 'yellow';
+  contactAttempts: number;
+  successfulContacts: number;
   managers: Manager[];
 };
 
@@ -40,6 +42,8 @@ const initialCompanies: Company[] = [
     totalAmount: '2,500,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm1', name: '田中一郎', position: '部長', phone: '+81-90-1234-5678', email: 'tanaka@toyota.co.jp', department: '調達部' },
       { id: 'm2', name: '鈴木花子', position: '課長', phone: '+81-90-2345-6789', email: 'suzuki@toyota.co.jp', department: '調達部' },
@@ -57,6 +61,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,800,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm3', name: '佐藤太郎', position: '部長', phone: '+81-90-3456-7890', email: 'sato@sony.co.jp', department: '購買部' },
     ],
@@ -73,6 +79,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,450,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm4', name: '山田美咲', position: '課長', phone: '+81-90-4567-8901', email: 'yamada@hitachi.co.jp', department: '資材部' },
       { id: 'm5', name: '中村健太', position: '係長', phone: '+81-90-5678-9012', email: 'nakamura@hitachi.co.jp', department: '資材部' },
@@ -90,6 +98,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,120,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm6', name: '小林由美', position: '部長', phone: '+81-90-6789-0123', email: 'kobayashi@panasonic.co.jp', department: '調達部' },
     ],
@@ -106,6 +116,8 @@ const initialCompanies: Company[] = [
     totalAmount: '890,000,000',
     status: '協議中',
     statusColor: 'yellow',
+    contactAttempts: 10,
+    successfulContacts: 6,
     managers: [
       { id: 'm7', name: '加藤誠', position: '課長', phone: '+81-90-7890-1234', email: 'kato@mitsubishielectric.co.jp', department: '購買部' },
     ],
@@ -122,6 +134,8 @@ const initialCompanies: Company[] = [
     totalAmount: '980,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm8', name: '伊藤麻衣', position: '部長', phone: '+81-90-8901-2345', email: 'ito@fujitsu.com', department: '調達部' },
     ],
@@ -138,6 +152,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,250,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm9', name: '高橋真', position: '部長', phone: '+81-90-9012-3456', email: 'takahashi@canon.co.jp', department: '資材部' },
     ],
@@ -154,6 +170,8 @@ const initialCompanies: Company[] = [
     totalAmount: '650,000,000',
     status: '協議中',
     statusColor: 'yellow',
+    contactAttempts: 10,
+    successfulContacts: 6,
     managers: [
       { id: 'm10', name: '渡辺浩二', position: '課長', phone: '+81-90-0123-4567', email: 'watanabe@toshiba.co.jp', department: '購買部' },
     ],
@@ -170,6 +188,8 @@ const initialCompanies: Company[] = [
     totalAmount: '780,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm11', name: '松本明子', position: '部長', phone: '+81-90-1234-6789', email: 'matsumoto@nec.co.jp', department: '調達部' },
     ],
@@ -186,6 +206,8 @@ const initialCompanies: Company[] = [
     totalAmount: '520,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm12', name: '井上春香', position: '課長', phone: '+81-90-2345-7890', email: 'inoue@omron.co.jp', department: '資材部' },
     ],
@@ -202,6 +224,8 @@ const initialCompanies: Company[] = [
     totalAmount: '850,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm13', name: '木村翔太', position: '部長', phone: '+81-90-3456-8901', email: 'kimura@murata.com', department: '購買部' },
     ],
@@ -218,6 +242,8 @@ const initialCompanies: Company[] = [
     totalAmount: '1,650,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm14', name: '林美紀', position: '部長', phone: '+81-90-4567-9012', email: 'hayashi@denso.co.jp', department: '調達部' },
     ],
@@ -234,6 +260,8 @@ const initialCompanies: Company[] = [
     totalAmount: '720,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm15', name: '清水健一', position: '課長', phone: '+81-90-5678-0123', email: 'shimizu@daikin.co.jp', department: '資材部' },
     ],
@@ -250,6 +278,8 @@ const initialCompanies: Company[] = [
     totalAmount: '550,000,000',
     status: '協議中',
     statusColor: 'yellow',
+    contactAttempts: 10,
+    successfulContacts: 6,
     managers: [
       { id: 'm16', name: '森下愛', position: '係長', phone: '+81-90-6789-1234', email: 'morishita@bridgestone.co.jp', department: '購買部' },
     ],
@@ -266,6 +296,8 @@ const initialCompanies: Company[] = [
     totalAmount: '620,000,000',
     status: '取引中',
     statusColor: 'green',
+    contactAttempts: 15,
+    successfulContacts: 12,
     managers: [
       { id: 'm17', name: '大野健二', position: '部長', phone: '+81-90-7890-2345', email: 'ono@asahi-kasei.co.jp', department: '調達部' },
     ],
@@ -346,7 +378,7 @@ export function CompanyJapan() {
   const handleSaveCompany = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
+
     const newCompany: Company = {
       id: editingCompany?.id || Date.now().toString(),
       name: formData.get('name') as string,
@@ -359,6 +391,8 @@ export function CompanyJapan() {
       totalAmount: editingCompany?.totalAmount || '0',
       status: formData.get('status') as string,
       statusColor: formData.get('statusColor') as 'blue' | 'green' | 'yellow',
+      contactAttempts: editingCompany?.contactAttempts || 0,
+      successfulContacts: editingCompany?.successfulContacts || 0,
       managers: editingCompany?.managers || [],
     };
 
@@ -367,7 +401,7 @@ export function CompanyJapan() {
     } else {
       setCompanies([newCompany, ...companies]);
     }
-    
+
     setShowCompanyModal(false);
     setEditingCompany(null);
   };
@@ -491,6 +525,15 @@ export function CompanyJapan() {
                         <div>
                           <span className="text-gray-500">총 거래액:</span>
                           <span className="ml-2 text-gray-900">{company.totalAmount}엔</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">컨택률:</span>
+                          <span className="ml-2 text-gray-900 font-semibold">
+                            {((company.successfulContacts / company.contactAttempts) * 100).toFixed(1)}%
+                          </span>
+                          <span className="ml-2 text-xs text-gray-600">
+                            (컨택 {company.successfulContacts}건 / 시도 {company.contactAttempts}건)
+                          </span>
                         </div>
                       </div>
                     </div>
