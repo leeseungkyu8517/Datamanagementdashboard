@@ -1,0 +1,317 @@
+-- ============================================================
+  -- EXTENSIONS & FUNCTIONS
+  -- ============================================================
+  create extension if not exists "uuid-ossp";
+
+  -- updated_at 자동 갱신 트리거 함수
+  create or replace function handle_updated_at()
+  returns trigger as $$
+  begin
+    new.updated_at = now();
+    return new;
+  end;
+  $$ language plpgsql;
+
+
+  -- ============================================================
+  -- ENUM TYPES
+  -- ============================================================
+  create type region_type     as enum ('korea', 'japan', 'vietnam');
+  create type company_rank    as enum ('A', 'B', 'C', 'D');
+  create type company_status  as enum ('거래중', '협의중', '보류');
+  create type sales_stage     as enum ('미팅 요청', '미팅 진행', '견적서 발송', '가격 협의', '계약 진행');
+  create type task_status     as enum ('todo', 'completed');
+  create type task_priority   as enum ('high', 'medium', 'low');
+  create type schedule_type   as enum ('meeting', 'deadline', 'event');
+  create type company_size    as enum ('대기업', '중견기업', '중소기업');
+  create type company_grade   as enum ('S등급', 'A등급', 'B등급', 'C등급');
+
+
+  -- ============================================================
+  -- 1. companies (거래처 기업 - 한국/일본/베트남 공용)
+  -- ============================================================
+  create table companies (
+    id                  uuid        primary key default gen_random_uuid(),
+    region              region_type not null,
+    name                text        not null,
+    rank                company_rank not null default 'B',
+    business_number     text,
+    ceo                 text,
+    industry            text,
+    address             text,
+    total_projects      int         not null default 0,
+    total_amount        bigint      not null default 0,  -- 원 단위 정수로 저장
+    status              company_status not null default '거래중',
+    contact_attempts    int         not null default 0,
+    successful_contacts int         not null default 0,
+    created_at          timestamptz not null default now(),
+    updated_at          timestamptz not null default now()
+  );
+
+  create trigger companies_updated_at
+    before update on companies
+    for each row execute function handle_updated_at();
+
+  create index on companies (region);
+  create index on companies (name);
+  create index on companies (status);
+
+
+  -- ============================================================
+  -- 2. company_managers (기업별 담당자 연락처)
+  -- ============================================================
+  create table company_managers (
+    id          uuid primary key default gen_random_uuid(),
+    company_id  uuid not null references companies(id) on delete cascade,
+    name        text not null,
+    position    text,           -- 직책
+    department  text,           -- 부서
+    phone       text,
+    email       text,
+    created_at  timestamptz not null default now()
+  );
+
+  create index on company_managers (company_id);
+
+
+  -- ============================================================
+  -- 3. sales_personnel (BRYCEN 내부 영업인력)
+  -- ============================================================
+  create table sales_personnel (
+    id             uuid        primary key default gen_random_uuid(),
+    region         region_type not null,
+    name           text        not null,
+    position       text,        -- 직책 (영업팀장, 영업과장, 영업대리 등)
+    department     text,        -- 소속팀
+    phone          text,
+    email          text,
+    projects_count int         not null default 0,
+    created_at     timestamptz not null default now(),
+    updated_at     timestamptz not null default now()
+  );
+
+  create trigger sales_personnel_updated_at
+    before update on sales_personnel
+    for each row execute function handle_updated_at();
+
+  create index on sales_personnel (region);
+
+
+  -- ============================================================
+  -- 4. sales_projects (영업 이력 / 프로젝트)
+  -- ============================================================
+  create table sales_projects (
+    id                  uuid        primary key default gen_random_uuid(),
+    project_name        text        not null,
+    -- 기업 참조 (nullable: 아직 companies 테이블에 없는 신규 거래처도 등록 가능)
+    company_id          uuid        references companies(id) on delete set null,
+    company_name        text        not null,    -- 비정규화 보조 컬럼
+    business_number     text,
+    company_phone       text,
+    stage               sales_stage not null default '미팅 요청',
+    amount              bigint,                  -- 예상 계약액 (원)
+    min_amount          bigint,                  -- 최소 예상액 (원)
+    max_amount          bigint,                  -- 최대 예상액 (원)
+    summary             text,                    -- 진행 요약
+    project_overview    text,                    -- 프로젝트 개요
+    -- 담당 영업인력 참조
+    sales_personnel_id  uuid        references sales_personnel(id) on delete set null,
+    manager_name        text,                    -- 비정규화 보조 컬럼
+    region              region_type,
+    created_at          timestamptz not null default now(),
+    updated_at          timestamptz not null default now()
+  );
+
+  create trigger sales_projects_updated_at
+    before update on sales_projects
+    for each row execute function handle_updated_at();
+
+  create index on sales_projects (company_id);
+  create index on sales_projects (sales_personnel_id);
+  create index on sales_projects (stage);
+  create index on sales_projects (region);
+
+
+  -- ============================================================
+  -- 5. meeting_notes (영업 프로젝트별 미팅 기록)
+  -- ============================================================
+  create table meeting_notes (
+    id                uuid primary key default gen_random_uuid(),
+    sales_project_id  uuid not null references sales_projects(id) on delete cascade,
+    date              date not null,
+    attendees         text,    -- "김영수, 박부장 외 1명"
+    content           text,
+    created_at        timestamptz not null default now()
+  );
+
+  create index on meeting_notes (sales_project_id);
+
+
+  -- ============================================================
+  -- 6. schedules (스케줄 / 캘린더)
+  -- ============================================================
+  create table schedules (
+    id           uuid          primary key default gen_random_uuid(),
+    date         date          not null,
+    title        text          not null,
+    time         time,
+    type         schedule_type not null default 'meeting',
+    company      text,          -- 관련 기업명 (optional)
+    manager      text,          -- 담당 영업인력명
+    client_name  text,          -- 고객 담당자명
+    client_phone text,
+    created_at   timestamptz   not null default now(),
+    updated_at   timestamptz   not null default now()
+  );
+
+  create trigger schedules_updated_at
+    before update on schedules
+    for each row execute function handle_updated_at();
+
+  create index on schedules (date);
+
+
+  -- ============================================================
+  -- 7. tasks (나의 할일)
+  -- ============================================================
+  create table tasks (
+    id                uuid          primary key default gen_random_uuid(),
+    title             text          not null,
+    description       text,
+    status            task_status   not null default 'todo',
+    priority          task_priority not null default 'medium',
+    due_date          date,
+    category          text,
+    assignee_name     text,
+    assignee_contact  text,
+    -- 영업 프로젝트 연결 (optional)
+    sales_project_id  uuid          references sales_projects(id) on delete set null,
+    project_name      text,
+    created_at        timestamptz   not null default now(),
+    updated_at        timestamptz   not null default now()
+  );
+
+  create trigger tasks_updated_at
+    before update on tasks
+    for each row execute function handle_updated_at();
+
+  create index on tasks (status);
+  create index on tasks (priority);
+  create index on tasks (due_date);
+
+
+  -- ============================================================
+  -- 8. task_tags (할일 태그 - 1:N)
+  -- ============================================================
+  create table task_tags (
+    id       uuid primary key default gen_random_uuid(),
+    task_id  uuid not null references tasks(id) on delete cascade,
+    tag      text not null
+  );
+
+  create index on task_tags (task_id);
+
+
+  -- ============================================================
+  -- 9. task_history (할일 변경 이력)
+  -- ============================================================
+  create table task_history (
+    id         uuid primary key default gen_random_uuid(),
+    task_id    uuid not null references tasks(id) on delete cascade,
+    date       date not null,
+    action     text not null,
+    user_name  text,
+    created_at timestamptz not null default now()
+  );
+
+  create index on task_history (task_id);
+
+
+  -- ============================================================
+  -- 10. task_attachments (할일 첨부파일)
+  -- ============================================================
+  create table task_attachments (
+    id         uuid primary key default gen_random_uuid(),
+    task_id    uuid not null references tasks(id) on delete cascade,
+    name       text not null,
+    url        text,
+    type       text,    -- 파일 타입 (pdf, image 등)
+    created_at timestamptz not null default now()
+  );
+
+  create index on task_attachments (task_id);
+
+
+  -- ============================================================
+  -- 11. company_data (기업 정보 수집 / AI 리서치)
+  -- ============================================================
+  create table company_data (
+    id          uuid         primary key default gen_random_uuid(),
+    name        text         not null,
+    industry    text,
+    keywords    text[],      -- 키워드 배열
+    size        company_size,
+    revenue     text,        -- "3,020억 달러" 등 표시용 문자열
+    country     text,
+    website     text,
+    ai_summary  text,        -- AI 요약문
+    grade       company_grade,
+    created_at  timestamptz  not null default now(),
+    updated_at  timestamptz  not null default now()
+  );
+
+  create trigger company_data_updated_at
+    before update on company_data
+    for each row execute function handle_updated_at();
+
+  create index on company_data (name);
+  create index on company_data (grade);
+
+
+  -- ============================================================
+  -- 12. company_data_crawling (수집된 URL별 크롤링 데이터)
+  -- ============================================================
+  create table company_data_crawling (
+    id               uuid        primary key default gen_random_uuid(),
+    company_data_id  uuid        not null references company_data(id) on delete cascade,
+    url              text        not null,
+    collected_at     timestamptz not null default now(),
+    keywords         text[],
+    created_at       timestamptz not null default now()
+  );
+
+  create index on company_data_crawling (company_data_id);
+
+  ---
+  설계 포인트 요약
+
+  ┌──────────────────────────────────────────┬──────────────────────────────────────────────────────────┐
+  │                   결정                   │                           이유                           │
+  ├──────────────────────────────────────────┼──────────────────────────────────────────────────────────┤
+  │ region 컬럼으로 3개국 통합               │ korea/japan/vietnam 테이블이 구조가 동일해서 하나로 관리 │
+  ├──────────────────────────────────────────┼──────────────────────────────────────────────────────────┤
+  │ total_amount를 bigint (원 단위)          │ 프론트에서 포맷팅, DB에선 숫자로 집계 가능               │
+  ├──────────────────────────────────────────┼──────────────────────────────────────────────────────────┤
+  │ sales_projects.company_id nullable FK    │ 아직 등록 안 된 신규 거래처도 영업 이력 등록 가능        │
+  ├──────────────────────────────────────────┼──────────────────────────────────────────────────────────┤
+  │ manager_name, company_name 비정규화 컬럼 │ FK 삭제되어도 기록 보존, 조회 성능                       │
+  ├──────────────────────────────────────────┼──────────────────────────────────────────────────────────┤
+  │ keywords text[] 배열 타입                │ Postgres 네이티브 배열로 simple하게 처리                 │
+  ├──────────────────────────────────────────┼──────────────────────────────────────────────────────────┤
+  │ updated_at 트리거 자동 관리              │ 모든 수정 시 자동 갱신                                   │
+  └──────────────────────────────────────────┴──────────────────────────────────────────────────────────┘
+
+  ---
+  이후 Supabase에서 Row Level Security(RLS) 설정이나 프론트 연동 코드(supabase-js) 작업이 필요하면 말씀해 주세요.
+
+✻ Churned for 1m 37s
+
+
+
+  1. Project URL  
+     예시: https://abcdefghijkl.supabase.co
+
+  2. anon / public 키
+     예시: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+
