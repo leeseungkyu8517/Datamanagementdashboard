@@ -1,6 +1,6 @@
 import { Outlet, useLocation } from 'react-router';
 import { Sidebar } from './sidebar';
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search, ChevronDown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -57,6 +57,7 @@ export function Layout() {
     () => (localStorage.getItem('affiliation') as Affiliation) ?? 'brycenkorea'
   );
   const [activeLang, setActiveLang] = useState<'ko' | 'ja'>(getActiveLang);
+  const [affiliationOpen, setAffiliationOpen] = useState(false);
 
   const handleAffiliation = (v: Affiliation) => {
     setAffiliation(v);
@@ -130,14 +131,30 @@ export function Layout() {
               </div>
               <div className="hidden sm:block">
                 <div className="text-sm font-semibold text-gray-800 leading-none">양현구</div>
-                <div className="mt-0.5">
-                  <select
-                    value={affiliation}
-                    onChange={e => handleAffiliation(e.target.value as Affiliation)}
-                    className={`text-xs font-semibold bg-transparent border-none outline-none cursor-pointer p-0 ${AFFILIATION_COLOR[affiliation]}`}
+                <div className="mt-0.5 relative">
+                  <button
+                    onClick={() => setAffiliationOpen(v => !v)}
+                    className="flex items-center gap-0.5 text-xs font-semibold text-gray-800"
                   >
-                    {AFFILIATIONS.map(a => <option key={a} value={a}>{a}</option>)}
-                  </select>
+                    {affiliation}
+                    <ChevronDown className={`w-3 h-3 transition-transform ${affiliationOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {affiliationOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setAffiliationOpen(false)} />
+                      <div className="absolute left-0 top-full mt-1.5 z-20 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-[148px]">
+                        {AFFILIATIONS.map(a => (
+                          <button
+                            key={a}
+                            onClick={() => { handleAffiliation(a); setAffiliationOpen(false); }}
+                            className={`w-full text-left px-3 py-2 text-xs font-semibold text-gray-800 transition-colors hover:bg-gray-50 ${a === affiliation ? 'bg-gray-50' : ''}`}
+                          >
+                            {a}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
