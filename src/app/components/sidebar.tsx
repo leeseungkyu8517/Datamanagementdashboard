@@ -10,11 +10,21 @@ type MenuItem = {
   children?: { path: string; label: string }[];
 };
 
+const SECTION_LABELS: Record<string, string> = {
+  '/my-tasks': '업무',
+  '/sales': '영업',
+  '/companies/korea': '지사 관리',
+  '/company-data': '분석',
+  '/dashboard': '대시보드',
+  '/schedule': '스케줄 관리',
+};
+
 export function Sidebar() {
   const location = useLocation();
   const [expandedMenu, setExpandedMenu] = useState<string | null>('/companies/korea');
 
   const allMenuItems: MenuItem[] = [
+    { path: '/my-tasks', icon: CheckSquare, label: '나의 할일' },
     { path: '/sales', icon: TrendingUp, label: '영업 이력 관리' },
     {
       path: '/companies/korea',
@@ -44,7 +54,6 @@ export function Sidebar() {
       ],
     },
     { path: '/company-data', icon: Database, label: '기업 정보 수집' },
-    { path: '/my-tasks', icon: CheckSquare, label: '나의 할일' },
     { path: '/dashboard', icon: BarChart3, label: '매출 예측 대시보드' },
     { path: '/period-forecast', icon: Target, label: '기수별 예측 대시보드' },
     { path: '/schedule', icon: Calendar, label: '스케줄 관리' },
@@ -52,7 +61,6 @@ export function Sidebar() {
 
   const isActive = (path: string) => location.pathname === path;
   const isParentActive = (item: MenuItem) => {
-    // 하위 메뉴가 있는 경우 부모 메뉴는 활성화 색상을 표시하지 않음
     if (item.children) return false;
     return isActive(item.path);
   };
@@ -61,54 +69,65 @@ export function Sidebar() {
     setExpandedMenu(expandedMenu === path ? null : path);
   };
 
+  let lastSection = '';
+
   return (
-    <aside className="w-64 bg-[#2c3444] flex flex-col h-full">
-      {/* Logo Area */}
-      <div className="px-6 py-6 flex items-center justify-center">
-        <img src={logoImage} alt="BRYCEN KOREA" className="h-8" />
+    <aside className="w-64 bg-[#1a2035] flex flex-col h-full shrink-0">
+      {/* Logo */}
+      <div className="px-6 pt-6 pb-5 border-b border-white/8">
+        <div className="flex items-center justify-center">
+          <img src={logoImage} alt="BRYCEN" className="max-h-10 w-auto object-contain" />
+        </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 py-6 overflow-y-auto">
-        <ul className="space-y-2">
+      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+        <ul className="space-y-0.5">
           {allMenuItems.map((item) => {
             const Icon = item.icon;
             const active = isParentActive(item);
-            const hasChildren = item.children && item.children.length > 0;
+            const hasChildren = !!item.children?.length;
             const isExpanded = expandedMenu === item.path;
+            const sectionLabel = SECTION_LABELS[item.path];
+            const showLabel = sectionLabel && sectionLabel !== lastSection;
+            if (showLabel) lastSection = sectionLabel;
 
             return (
               <li key={item.path}>
+                {showLabel && (
+                  <div className="px-3 pt-4 pb-1.5">
+                    <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">{sectionLabel}</span>
+                  </div>
+                )}
                 {hasChildren ? (
                   <>
                     <button
                       onClick={() => toggleMenu(item.path)}
-                      className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-all ${
-                        active
-                          ? 'bg-[#3d4659] text-white'
-                          : 'text-gray-400 hover:bg-[#3d4659]/50 hover:text-gray-200'
+                      className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg transition-all text-left ${
+                        isExpanded
+                          ? 'bg-white/10 text-white'
+                          : 'text-white/50 hover:bg-white/6 hover:text-white/80'
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <Icon className="w-5 h-5" />
+                        <Icon className="w-4 h-4 shrink-0" />
                         <span className="text-sm font-medium">{item.label}</span>
                       </div>
-                      {isExpanded ? (
-                        <ChevronDown className="w-4 h-4" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4" />
-                      )}
+                      {isExpanded
+                        ? <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                        : <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                      }
                     </button>
                     {isExpanded && (
-                      <ul className="mt-1 ml-4 space-y-1">
-                        {item.children.map((child) => (
+                      <ul className="mt-0.5 ml-3 pl-4 border-l border-white/10 space-y-0.5">
+                        {item.children!.map((child) => (
                           <li key={child.path}>
                             <Link
                               to={child.path}
-                              className={`block px-4 py-2 rounded-lg text-sm transition-all ${
+                              className={`block px-3 py-2 rounded-lg text-xs transition-all ${
                                 isActive(child.path)
-                                  ? 'bg-[#4a5568] text-white'
-                                  : 'text-gray-400 hover:bg-[#3d4659]/50 hover:text-gray-200'
+                                  ? 'bg-blue-500/20 text-blue-300 font-semibold'
+                                  : 'text-white/45 hover:bg-white/6 hover:text-white/70'
                               }`}
                             >
                               {child.label}
@@ -121,13 +140,13 @@ export function Sidebar() {
                 ) : (
                   <Link
                     to={item.path}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
                       active
-                        ? 'bg-[#3d4659] text-white'
-                        : 'text-gray-400 hover:bg-[#3d4659]/50 hover:text-gray-200'
+                        ? 'bg-blue-500/20 text-blue-300'
+                        : 'text-white/50 hover:bg-white/6 hover:text-white/80'
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
+                    <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-blue-400' : ''}`} />
                     <span className="text-sm font-medium">{item.label}</span>
                   </Link>
                 )}
@@ -136,6 +155,19 @@ export function Sidebar() {
           })}
         </ul>
       </nav>
+
+      {/* Bottom */}
+      <div className="px-4 py-4 border-t border-white/8">
+        <div className="flex items-center gap-3 px-2">
+          <div className="w-7 h-7 rounded-full bg-blue-500/30 flex items-center justify-center shrink-0">
+            <span className="text-xs font-bold text-blue-300">양</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-white/80 truncate">양현구</div>
+            <div className="text-xs text-white/35 truncate">관리자</div>
+          </div>
+        </div>
+      </div>
     </aside>
   );
 }

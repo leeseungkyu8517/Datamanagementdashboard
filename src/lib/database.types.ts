@@ -1,12 +1,12 @@
 export type RegionType = 'korea' | 'japan' | 'vietnam'
-export type CompanyRank = 'A' | 'B' | 'C' | 'D'
+export type CompanyRank = number // 0~5: 5=S, 4=A, 3=B, 2=C, 1=D, 0=E
 export type CompanyStatus = '거래중' | '협의중' | '보류'
 export type SalesStage = '미팅 요청' | '미팅 진행' | '견적서 발송' | '가격 협의' | '계약 진행'
 export type TaskStatus = 'todo' | 'completed'
 export type TaskPriority = 'high' | 'medium' | 'low'
 export type ScheduleType = 'meeting' | 'deadline' | 'event'
 export type CompanySize = '대기업' | '중견기업' | '중소기업'
-export type CompanyGrade = 'S등급' | 'A등급' | 'B등급' | 'C등급'
+export type CompanyGrade = number // 1~5: 5=최상위(5등급), 1=최하위(1등급)
 
 export interface Company {
   id: string
@@ -76,6 +76,7 @@ export interface MeetingNote {
   date: string
   attendees: string | null
   content: string | null
+  estimated_amount: number | null
   created_at: string
 }
 

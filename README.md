@@ -9,5 +9,3 @@
 
   Run `npm run dev` to start the development server.
   
-
-* 안녕하세요 세수를 하고 싶어요 지금 잠시 화면조정의 시간을 거치겠습니다. 
