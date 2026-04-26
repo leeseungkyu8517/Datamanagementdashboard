@@ -77,6 +77,13 @@ export interface MeetingNote {
   attendees: string | null
   content: string | null
   estimated_amount: number | null
+  contract_date: string | null
+  deposit_date: string | null
+  deposit_pct: number | null
+  interim_date: string | null
+  interim_pct: number | null
+  balance_date: string | null
+  balance_pct: number | null
   created_at: string
 }
 

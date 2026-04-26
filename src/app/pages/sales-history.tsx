@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, Plus, ChevronDown, Calendar, Edit2, Trash2, X, Brain } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import type { SalesProject, MeetingNote, Company, SalesPersonnel, SalesStage } from '@/lib/database.types';
+import type { SalesProject, MeetingNote, Company, SalesPersonnel, SalesStage, RegionType } from '@/lib/database.types';
 
 const STAGES: SalesStage[] = ['미팅 요청', '미팅 진행', '견적서 발송', '가격 협의', '계약 진행'];
 
@@ -46,6 +46,13 @@ export function SalesHistory() {
   const [saving, setSaving] = useState(false);
   const [aiEstimating, setAiEstimating] = useState<Record<string, boolean>>({});
   const [aiEstimateResult, setAiEstimateResult] = useState<Record<string, { amount: number; min_amount: number; max_amount: number; reason: string }>>({});
+  const [projectsWithNegotiation, setProjectsWithNegotiation] = useState<Set<string>>(new Set());
+
+  // 납금 관련 상태
+  const [noteEstAmt, setNoteEstAmt] = useState<number | null>(null);
+  const [depositPct, setDepositPct] = useState<number | null>(null);
+  const [interimPct, setInterimPct] = useState<number | null>(null);
+  const [balancePct, setBalancePct] = useState<number | null>(null);
 
   // 선택된 기업 ID (폼 내부용)
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
@@ -54,16 +61,28 @@ export function SalesHistory() {
     fetchAll();
   }, []);
 
+  // 회의록 모달이 열릴 때 납금 상태 초기화
+  useEffect(() => {
+    if (showNoteModal) {
+      setNoteEstAmt(editingNote?.estimated_amount ?? null);
+      setDepositPct(editingNote?.deposit_pct ?? null);
+      setInterimPct(editingNote?.interim_pct ?? null);
+      setBalancePct(editingNote?.balance_pct ?? null);
+    }
+  }, [showNoteModal]);
+
   async function fetchAll() {
     setLoading(true);
-    const [{ data: proj }, { data: comp }, { data: pers }] = await Promise.all([
+    const [{ data: proj }, { data: comp }, { data: pers }, { data: negNotes }] = await Promise.all([
       supabase.from('sales_projects').select('*').order('created_at', { ascending: false }),
       supabase.from('companies').select('*').order('name'),
       supabase.from('sales_personnel').select('*').order('name'),
+      supabase.from('meeting_notes').select('sales_project_id').not('estimated_amount', 'is', null),
     ]);
     setProjects(proj ?? []);
     setCompanies(comp ?? []);
     setPersonnel(pers ?? []);
+    setProjectsWithNegotiation(new Set((negNotes ?? []).map(n => n.sales_project_id)));
     setLoading(false);
   }
 
@@ -130,6 +149,7 @@ export function SalesHistory() {
       project_overview: fd.get('project_overview') as string || null,
       sales_personnel_id: personnelId || null,
       manager_name: person?.name ?? null,
+      region: (fd.get('region') as RegionType) || null,
     };
 
     if (editingProject) {
@@ -161,12 +181,29 @@ export function SalesHistory() {
     const fd = new FormData(e.currentTarget);
 
     const rawAmt = fd.get('estimated_amount') as string;
+    const estimatedAmount = rawAmt ? Number(rawAmt.replace(/,/g, '')) : null;
+
+    // 납금 합계 검증
+    const totalPct = (depositPct ?? 0) + (interimPct ?? 0) + (balancePct ?? 0);
+    if (totalPct > 0 && totalPct !== 100) {
+      alert(`선금, 중도금, 잔금의 합계가 100%가 되어야 합니다. (현재 ${totalPct}%)`);
+      setSaving(false);
+      return;
+    }
+
     const payload = {
       sales_project_id: selectedProjectId,
       date: fd.get('date') as string,
       attendees: fd.get('attendees') as string || null,
       content: fd.get('content') as string || null,
-      estimated_amount: rawAmt ? Number(rawAmt.replace(/,/g, '')) : null,
+      estimated_amount: estimatedAmount,
+      contract_date: fd.get('contract_date') as string || null,
+      deposit_date: fd.get('deposit_date') as string || null,
+      deposit_pct: depositPct,
+      interim_date: fd.get('interim_date') as string || null,
+      interim_pct: interimPct,
+      balance_date: fd.get('balance_date') as string || null,
+      balance_pct: balancePct,
     };
 
     if (editingNote) {
@@ -185,19 +222,47 @@ export function SalesHistory() {
       }));
     }
 
+    // 협의 금액이 있으면 ±10%로 프로젝트 최소/최대 금액 자동 설정
+    if (estimatedAmount != null) {
+      const minAmount = Math.round(estimatedAmount * 0.9);
+      const maxAmount = Math.round(estimatedAmount * 1.1);
+      const { data: updatedProject } = await supabase
+        .from('sales_projects')
+        .update({ amount: estimatedAmount, min_amount: minAmount, max_amount: maxAmount })
+        .eq('id', selectedProjectId)
+        .select()
+        .single();
+      if (updatedProject) {
+        setProjects(prev => prev.map(p => p.id === selectedProjectId ? updatedProject : p));
+      }
+      setProjectsWithNegotiation(prev => new Set([...prev, selectedProjectId]));
+    }
+
     setSaving(false);
     setShowNoteModal(false);
     setEditingNote(null);
-    runAiEstimate(selectedProjectId);
+
+    if (estimatedAmount == null) {
+      runAiEstimate(selectedProjectId);
+    }
   };
 
   const handleDeleteNote = async (noteId: string, projectId: string) => {
     if (!window.confirm('회의록을 삭제하시겠습니까?')) return;
+    const deletedNote = (meetingNotes[projectId] ?? []).find(n => n.id === noteId);
     await supabase.from('meeting_notes').delete().eq('id', noteId);
-    setMeetingNotes(prev => ({
-      ...prev,
-      [projectId]: (prev[projectId] ?? []).filter(n => n.id !== noteId),
-    }));
+    const remaining = (meetingNotes[projectId] ?? []).filter(n => n.id !== noteId);
+    setMeetingNotes(prev => ({ ...prev, [projectId]: remaining }));
+    if (deletedNote?.estimated_amount != null) {
+      const hasRemaining = remaining.some(n => n.estimated_amount != null);
+      if (!hasRemaining) {
+        setProjectsWithNegotiation(prev => {
+          const next = new Set(prev);
+          next.delete(projectId);
+          return next;
+        });
+      }
+    }
   };
 
   const runAiEstimate = async (projectId: string) => {
@@ -222,6 +287,8 @@ export function SalesHistory() {
       setAiEstimating(prev => ({ ...prev, [projectId]: false }));
     }
   };
+
+  const totalPct = (depositPct ?? 0) + (interimPct ?? 0) + (balancePct ?? 0);
 
   return (
     <div className="flex h-full bg-[#f5f6fa]">
@@ -333,6 +400,14 @@ export function SalesHistory() {
                             <div className={`h-full rounded-full ${getProgressColor(project.stage)}`}
                               style={{ width: `${((STAGES.indexOf(project.stage) + 1) / STAGES.length) * 100}%` }} />
                           </div>
+                          {(project.amount != null || project.min_amount != null || project.max_amount != null) && !projectsWithNegotiation.has(project.id) && (
+                            <button
+                              onClick={() => { handleSelectProject(project.id); setEditingNote(null); setShowNoteModal(true); }}
+                              className="inline-flex items-center px-2 py-0.5 bg-amber-50 text-amber-600 border border-amber-200 rounded-full text-xs font-medium whitespace-nowrap hover:bg-amber-100 transition-colors"
+                            >
+                              현재 가격협의 회의 없음
+                            </button>
+                          )}
                         </div>
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStageColor(project.stage)}`}>
                           {project.stage}
@@ -455,12 +530,47 @@ export function SalesHistory() {
                         </button>
                       </div>
                     </div>
+
+                    {/* 협의 금액 + 납금 일정 */}
                     {note.estimated_amount != null && (
-                      <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-emerald-50 rounded-lg border border-emerald-200">
-                        <span className="text-xs font-semibold text-emerald-600 whitespace-nowrap">협의 금액</span>
-                        <span className="text-sm font-bold text-emerald-700">{formatAmount(note.estimated_amount)}원</span>
+                      <div className="mb-3 px-3 py-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-semibold text-emerald-600 whitespace-nowrap">협의 금액</span>
+                          <span className="text-sm font-bold text-emerald-700">{formatAmount(note.estimated_amount)}원</span>
+                        </div>
+                        {((note.deposit_pct ?? 0) + (note.interim_pct ?? 0) + (note.balance_pct ?? 0)) > 0 && (
+                          <div className="space-y-1 pt-1.5 mt-1 border-t border-emerald-200">
+                            {note.deposit_date && note.deposit_pct != null && (
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-emerald-600">선금 {note.deposit_pct}% · {note.deposit_date}</span>
+                                <span className="font-semibold text-emerald-700">{formatAmount(Math.round(note.estimated_amount * note.deposit_pct / 100))}원</span>
+                              </div>
+                            )}
+                            {note.interim_date && note.interim_pct != null && (
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-emerald-600">중도금 {note.interim_pct}% · {note.interim_date}</span>
+                                <span className="font-semibold text-emerald-700">{formatAmount(Math.round(note.estimated_amount * note.interim_pct / 100))}원</span>
+                              </div>
+                            )}
+                            {note.balance_date && note.balance_pct != null && (
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-emerald-600">잔금 {note.balance_pct}% · {note.balance_date}</span>
+                                <span className="font-semibold text-emerald-700">{formatAmount(Math.round(note.estimated_amount * note.balance_pct / 100))}원</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
+
+                    {/* 계약 예정 날짜 */}
+                    {note.contract_date && (
+                      <div className="flex items-center gap-1.5 text-xs text-indigo-600 mb-2 bg-indigo-50 px-2 py-1 rounded">
+                        <Calendar className="w-3 h-3" />
+                        계약 예정: {note.contract_date}
+                      </div>
+                    )}
+
                     {note.attendees && <div className="text-sm text-gray-600 mb-2">참석자: {note.attendees}</div>}
                     <div className="text-sm text-gray-700 leading-relaxed">{note.content}</div>
                   </div>
@@ -507,12 +617,24 @@ export function SalesHistory() {
                     className="w-full mt-2 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
                 )}
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">영업 단계 *</label>
-                <select name="stage" defaultValue={editingProject?.stage ?? '미팅 요청'} required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white">
-                  {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">영업 단계 *</label>
+                  <select name="stage" defaultValue={editingProject?.stage ?? '미팅 요청'} required
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white">
+                    {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">지역 (기수 대시보드 반영)</label>
+                  <select name="region" defaultValue={editingProject?.region ?? ''}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white">
+                    <option value="">미지정</option>
+                    <option value="korea">한국</option>
+                    <option value="japan">일본</option>
+                    <option value="vietnam">베트남</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">담당자</label>
@@ -565,36 +687,129 @@ export function SalesHistory() {
       {/* Meeting Note Modal */}
       {showNoteModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => { setShowNoteModal(false); setEditingNote(null); }}>
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
               <h3 className="text-lg font-bold text-gray-900">{editingNote ? '회의록 수정' : '회의록 추가'}</h3>
               <button onClick={() => { setShowNoteModal(false); setEditingNote(null); }} className="p-1 hover:bg-gray-100 rounded transition-colors">
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-            <form onSubmit={handleSaveNote} className="px-6 py-4 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">날짜 *</label>
-                <input name="date" type="date" defaultValue={editingNote?.date ?? new Date().toISOString().slice(0, 10)} required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+            <form onSubmit={handleSaveNote} className="overflow-y-auto flex-1">
+              <div className="px-6 py-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">날짜 *</label>
+                  <input name="date" type="date" defaultValue={editingNote?.date ?? new Date().toISOString().slice(0, 10)} required
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">참석자</label>
+                  <input name="attendees" type="text" defaultValue={editingNote?.attendees ?? ''} placeholder="예: 김영수, 박팀장 외 2명"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    협의 금액 (원) <span className="text-gray-400 font-normal">— 회의에서 논의된 예상 매출액</span>
+                  </label>
+                  <input name="estimated_amount" type="number"
+                    defaultValue={editingNote?.estimated_amount ?? ''}
+                    onChange={e => setNoteEstAmt(e.target.value ? Number(e.target.value) : null)}
+                    placeholder="예: 150000000"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                </div>
+
+                {/* 계약 예정 날짜 */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">계약 예정 날짜</label>
+                  <input name="contract_date" type="date" defaultValue={editingNote?.contract_date ?? ''}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                </div>
+
+                {/* 납금 일정 */}
+                <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50/50">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-700">납금 일정</span>
+                    {totalPct > 0 && (
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                        totalPct === 100
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-red-100 text-red-600'
+                      }`}>
+                        합계 {totalPct}% {totalPct === 100 ? '✓' : '— 100%가 아님'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 선금 */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">선금 지급</label>
+                    <div className="grid grid-cols-[1fr_90px] gap-2">
+                      <input name="deposit_date" type="date" defaultValue={editingNote?.deposit_date ?? ''}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <div className="relative">
+                        <input type="number" min="0" max="100" placeholder="%"
+                          value={depositPct ?? ''}
+                          onChange={e => setDepositPct(e.target.value ? Number(e.target.value) : null)}
+                          className="w-full px-3 py-2 pr-7 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                      </div>
+                    </div>
+                    {noteEstAmt != null && (depositPct ?? 0) > 0 && (
+                      <div className="text-xs text-emerald-600 mt-1 font-medium">
+                        → {formatAmount(Math.round(noteEstAmt * (depositPct ?? 0) / 100))}원
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 중도금 */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">중도금 지급</label>
+                    <div className="grid grid-cols-[1fr_90px] gap-2">
+                      <input name="interim_date" type="date" defaultValue={editingNote?.interim_date ?? ''}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <div className="relative">
+                        <input type="number" min="0" max="100" placeholder="%"
+                          value={interimPct ?? ''}
+                          onChange={e => setInterimPct(e.target.value ? Number(e.target.value) : null)}
+                          className="w-full px-3 py-2 pr-7 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                      </div>
+                    </div>
+                    {noteEstAmt != null && (interimPct ?? 0) > 0 && (
+                      <div className="text-xs text-emerald-600 mt-1 font-medium">
+                        → {formatAmount(Math.round(noteEstAmt * (interimPct ?? 0) / 100))}원
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 잔금 */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">잔금 지급</label>
+                    <div className="grid grid-cols-[1fr_90px] gap-2">
+                      <input name="balance_date" type="date" defaultValue={editingNote?.balance_date ?? ''}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <div className="relative">
+                        <input type="number" min="0" max="100" placeholder="%"
+                          value={balancePct ?? ''}
+                          onChange={e => setBalancePct(e.target.value ? Number(e.target.value) : null)}
+                          className="w-full px-3 py-2 pr-7 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                      </div>
+                    </div>
+                    {noteEstAmt != null && (balancePct ?? 0) > 0 && (
+                      <div className="text-xs text-emerald-600 mt-1 font-medium">
+                        → {formatAmount(Math.round(noteEstAmt * (balancePct ?? 0) / 100))}원
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">회의 내용</label>
+                  <textarea name="content" defaultValue={editingNote?.content ?? ''} rows={6}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">참석자</label>
-                <input name="attendees" type="text" defaultValue={editingNote?.attendees ?? ''} placeholder="예: 김영수, 박팀장 외 2명"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">협의 금액 (원) <span className="text-gray-400 font-normal">— 회의에서 논의된 예상 매출액</span></label>
-                <input name="estimated_amount" type="number" defaultValue={editingNote?.estimated_amount ?? ''}
-                  placeholder="예: 150000000"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">회의 내용</label>
-                <textarea name="content" defaultValue={editingNote?.content ?? ''} rows={8}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
-              </div>
-              <div className="flex gap-3 pt-2 border-t border-gray-200">
+              <div className="flex gap-3 px-6 py-4 border-t border-gray-200 shrink-0">
                 <button type="button" onClick={() => { setShowNoteModal(false); setEditingNote(null); }}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 text-sm font-medium">취소</button>
                 <button type="submit" disabled={saving}

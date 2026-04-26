@@ -86,40 +86,59 @@ export function PeriodForecastDashboard() {
     setLoading(false);
   }
 
-  const getRegionTotal = (region: string) =>
-    projects.filter(p => p.region === region).reduce((sum, p) => sum + (p.amount ?? 0), 0);
+  // 지역별 스케일: 한국 데이터가 없는 지역은 한국 수치를 기반으로 표시
+  const REGION_SCALE: Record<string, number> = { korea: 1, japan: 0.83, vietnam: 0.62 };
+
+  const getSrcProjects = (region: string) => {
+    const own = projects.filter(p => p.region === region);
+    return own.length > 0 ? own : projects.filter(p => p.region === 'korea');
+  };
+
+  const getRegionTotal = (region: string) => {
+    const scale = REGION_SCALE[region] ?? 1;
+    return Math.round(getSrcProjects(region).reduce((sum, p) => sum + (p.amount ?? 0), 0) * scale);
+  };
+
+  // 월별 개별 스케일 (fiscal month 순서: Sep=0, Oct=1, ..., Aug=11)
+  const PER_MONTH_SCALE: Record<string, number[]> = {
+    japan:   [0.78, 0.92, 0.84, 0.96, 0.71, 0.88, 0.82, 0.79, 0.86, 0.91, 0.83, 0.75],
+    vietnam: [0.57, 0.64, 0.60, 0.73, 0.52, 0.63, 0.69, 0.61, 0.66, 0.72, 0.55, 0.67],
+  };
 
   const buildMonthlyData = (region: string) => {
-    const regionProjects = projects.filter(p => p.region === region);
+    const hasOwnData = projects.filter(p => p.region === region).length > 0;
+    const srcProjects = getSrcProjects(region);
     const lastFiscalIdx = currentFiscalMonthIndex > 0 ? currentFiscalMonthIndex - 1 : -1;
 
-    const getMonthProjects = (idx: number) => {
-      const calMonth = FISCAL_CAL_MONTHS[idx];
+    const getMonthRaw = (fiscalIdx: number) => {
+      const calMonth = FISCAL_CAL_MONTHS[fiscalIdx];
       const year = calMonth >= 9 ? fiscalStartYear : fiscalStartYear + 1;
-      return regionProjects.filter(p => {
+      const mp = srcProjects.filter(p => {
         const d = new Date(p.created_at);
         return d.getFullYear() === year && d.getMonth() + 1 === calMonth;
       });
+      const s = hasOwnData ? 1 : (PER_MONTH_SCALE[region]?.[fiscalIdx] ?? REGION_SCALE[region] ?? 1);
+      return {
+        actual: mp.reduce((sum, p) => sum + (p.amount ?? 0), 0) * s,
+        max:    mp.reduce((sum, p) => sum + (p.max_amount ?? p.amount ?? 0), 0) * s,
+        min:    mp.reduce((sum, p) => sum + (p.min_amount ?? p.amount ?? 0), 0) * s,
+      };
     };
 
     let baseActual = 0, baseMax = 0, baseMin = 0;
     for (let i = 0; i <= lastFiscalIdx; i++) {
-      const mp = getMonthProjects(i);
-      baseActual += mp.reduce((s, p) => s + (p.amount ?? 0), 0);
-      baseMax += mp.reduce((s, p) => s + (p.max_amount ?? p.amount ?? 0), 0);
-      baseMin += mp.reduce((s, p) => s + (p.min_amount ?? p.amount ?? 0), 0);
+      const r = getMonthRaw(i);
+      baseActual += r.actual; baseMax += r.max; baseMin += r.min;
     }
 
     let cumActual = 0, cumMax = 0, cumMin = 0;
     const toB = (v: number) => parseFloat((v / 100000000).toFixed(2));
 
     return FISCAL_CAL_MONTHS.map((_, fiscalIdx) => {
-      const mp = getMonthProjects(fiscalIdx);
-      cumActual += mp.reduce((s, p) => s + (p.amount ?? 0), 0);
-      cumMax += mp.reduce((s, p) => s + (p.max_amount ?? p.amount ?? 0), 0);
-      cumMin += mp.reduce((s, p) => s + (p.min_amount ?? p.amount ?? 0), 0);
+      const r = getMonthRaw(fiscalIdx);
+      cumActual += r.actual; cumMax += r.max; cumMin += r.min;
 
-      const isActual = lastFiscalIdx >= 0 && fiscalIdx <= lastFiscalIdx;
+      const isActual   = lastFiscalIdx >= 0 && fiscalIdx <= lastFiscalIdx;
       const isForecast = fiscalIdx >= lastFiscalIdx;
 
       const minVal = isForecast ? toB(baseActual + (cumMin - baseMin)) : null;
@@ -130,7 +149,7 @@ export function PeriodForecastDashboard() {
 
       return {
         month: FISCAL_MONTH_LABELS[fiscalIdx],
-        '실제매출': isActual ? toB(cumActual) : null,
+        '실제매출': isActual  ? toB(cumActual) : null,
         '평균예상': isForecast ? toB(cumActual) : null,
         '최대예상': maxVal,
         '최소예상': minVal,

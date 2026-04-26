@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Building2, TrendingUp, BarChart3, Calendar, ChevronDown, ChevronRight, Database, CheckSquare, Target } from 'lucide-react';
+import { Building2, TrendingUp, BarChart3, Calendar, ChevronDown, ChevronRight, Database, CheckSquare, Target, Briefcase } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
 import logoImage from 'figma:asset/22188a559e2ae35bb209914ca8f5f374d6231efc.png';
 
@@ -13,6 +13,7 @@ type MenuItem = {
 const SECTION_LABELS: Record<string, string> = {
   '/my-tasks': '업무',
   '/sales': '영업',
+  '/meeting-prep': '영업',
   '/companies/korea': '지사 관리',
   '/company-data': '분석',
   '/dashboard': '대시보드',
@@ -26,6 +27,7 @@ export function Sidebar() {
   const allMenuItems: MenuItem[] = [
     { path: '/my-tasks', icon: CheckSquare, label: '나의 할일' },
     { path: '/sales', icon: TrendingUp, label: '영업 이력 관리' },
+    { path: '/meeting-prep', icon: Briefcase, label: '미팅 준비' },
     {
       path: '/companies/korea',
       icon: Building2,
@@ -158,15 +160,7 @@ export function Sidebar() {
 
       {/* Bottom */}
       <div className="px-4 py-4 border-t border-white/8">
-        <div className="flex items-center gap-3 px-2">
-          <div className="w-7 h-7 rounded-full bg-blue-500/30 flex items-center justify-center shrink-0">
-            <span className="text-xs font-bold text-blue-300">양</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-white/80 truncate">양현구</div>
-            <div className="text-xs text-white/35 truncate">관리자</div>
-          </div>
-        </div>
+        <p className="text-xs text-white/25 text-center">© 2026 Seungkyu Lee</p>
       </div>
     </aside>
   );

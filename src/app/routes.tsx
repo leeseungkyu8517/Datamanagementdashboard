@@ -12,6 +12,7 @@ import { SalesPersonnelJapan } from './pages/sales-personnel-japan';
 import { SalesPersonnelVietnam } from './pages/sales-personnel-vietnam';
 import { CompanyDataCollection } from './pages/company-data-collection';
 import { MyTasks } from './pages/my-tasks';
+import { MeetingPrep } from './pages/meeting-prep';
 
 export const router = createBrowserRouter([
   {
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       { path: 'dashboard', Component: SalesDashboard },
       { path: 'period-forecast', Component: PeriodForecastDashboard },
       { path: 'schedule', Component: ScheduleManagement },
+      { path: 'meeting-prep', Component: MeetingPrep },
     ],
   },
 ]);

@@ -35,9 +35,26 @@ function LiveClock() {
   return <span className="text-sm font-medium text-gray-700 tabular-nums">{time}</span>;
 }
 
+const AFFILIATIONS = ['brycenkorea', 'brycenjapan', 'brycenvietnam'] as const;
+type Affiliation = typeof AFFILIATIONS[number];
+
+const AFFILIATION_COLOR: Record<Affiliation, string> = {
+  brycenkorea:   'text-indigo-500',
+  brycenjapan:   'text-rose-500',
+  brycenvietnam: 'text-sky-500',
+};
+
 export function Layout() {
   const location = useLocation();
   const pageTitle = PAGE_TITLES[location.pathname] ?? '';
+  const [affiliation, setAffiliation] = useState<Affiliation>(
+    () => (localStorage.getItem('affiliation') as Affiliation) ?? 'brycenkorea'
+  );
+
+  const handleAffiliation = (v: Affiliation) => {
+    setAffiliation(v);
+    localStorage.setItem('affiliation', v);
+  };
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#f0f2f7]">
@@ -66,12 +83,20 @@ export function Layout() {
             </button>
 
             <div className="ml-2 pl-3 border-l border-gray-200 flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-[#1a2035] flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-[#1a2035] flex items-center justify-center shrink-0">
                 <span className="text-xs font-bold text-white">양</span>
               </div>
               <div className="hidden sm:block">
                 <div className="text-sm font-semibold text-gray-800 leading-none">양현구</div>
-                <div className="text-xs text-gray-400 mt-0.5">관리자</div>
+                <div className="mt-0.5">
+                  <select
+                    value={affiliation}
+                    onChange={e => handleAffiliation(e.target.value as Affiliation)}
+                    className={`text-xs font-semibold bg-transparent border-none outline-none cursor-pointer p-0 ${AFFILIATION_COLOR[affiliation]}`}
+                  >
+                    {AFFILIATIONS.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
