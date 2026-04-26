@@ -6,7 +6,7 @@ import {
 import { TrendingUp, DollarSign, Layers, Award, ChevronLeft, ChevronRight, ArrowUpRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { SalesProject, Company } from '@/lib/database.types';
+import type { SalesProject, Company, MeetingNote } from '@/lib/database.types';
 
 const STAGE_PALETTE: Record<string, { color: string; bg: string }> = {
   '미팅 요청':  { color: '#94A3B8', bg: '#F1F5F9' },
@@ -67,6 +67,7 @@ function DonutCenter({ cx, cy, total }: { cx?: number; cy?: number; total: numbe
 export function SalesDashboard() {
   const [projects, setProjects] = useState<SalesProject[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
@@ -74,12 +75,14 @@ export function SalesDashboard() {
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
-      const [{ data: proj }, { data: comp }] = await Promise.all([
+      const [{ data: proj }, { data: comp }, { data: notes }] = await Promise.all([
         supabase.from('sales_projects').select('*'),
         supabase.from('companies').select('*').order('total_amount', { ascending: false }),
+        supabase.from('meeting_notes').select('*'),
       ]);
       setProjects(proj ?? []);
       setCompanies(comp ?? []);
+      setMeetingNotes(notes ?? []);
       setLoading(false);
     }
     fetchData();
@@ -100,21 +103,65 @@ export function SalesDashboard() {
     successRate:   `${successRate}%`,
   };
 
-  // 월별 데이터
-  const currentYear = new Date().getFullYear();
-  const monthlyMap: Record<number, { 최대예상: number; 실제매출: number; 최소예상: number }> = {};
-  projects.forEach(p => {
-    const d = new Date(p.created_at);
-    if (d.getFullYear() !== currentYear) return;
-    const m = d.getMonth();
-    if (!monthlyMap[m]) monthlyMap[m] = { 최대예상: 0, 실제매출: 0, 최소예상: 0 };
-    monthlyMap[m].최대예상 += Math.round((p.max_amount ?? 0) / 1_000_000);
-    monthlyMap[m].실제매출 += Math.round((p.amount    ?? 0) / 1_000_000);
-    monthlyMap[m].최소예상 += Math.round((p.min_amount ?? 0) / 1_000_000);
+  // 월별 데이터: 이번달 기준 최근 12개월 롤링 윈도우
+  const _now = new Date();
+  const nowYear = _now.getFullYear();
+  const nowMonth = _now.getMonth(); // 0-indexed
+
+  const rollingSlots: Array<{ year: number; month: number; label: string }> = [];
+  for (let i = 11; i >= 0; i--) {
+    let m = nowMonth - i;
+    let y = nowYear;
+    if (m < 0) { m += 12; y -= 1; }
+    const prefix = y !== nowYear ? `'${String(y).slice(2)}/` : '';
+    rollingSlots.push({ year: y, month: m, label: `${prefix}${MONTH_LABELS[m]}` });
+  }
+
+  const rollingMap: Record<number, { 최대예상: number; 실제매출: number; 최소예상: number }> = {};
+  rollingSlots.forEach((_, i) => { rollingMap[i] = { 최대예상: 0, 실제매출: 0, 최소예상: 0 }; });
+
+  const getSlotIdx = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return rollingSlots.findIndex(s => s.year === d.getFullYear() && s.month === d.getMonth());
+  };
+
+  // 프로젝트별 최신 납금 일정 회의록 매핑
+  const paymentNoteMap: Record<string, MeetingNote> = {};
+  meetingNotes.forEach(n => {
+    const sum = (n.deposit_pct ?? 0) + (n.interim_pct ?? 0) + (n.balance_pct ?? 0);
+    if (sum <= 0) return;
+    const existing = paymentNoteMap[n.sales_project_id];
+    if (!existing || n.date > existing.date) paymentNoteMap[n.sales_project_id] = n;
   });
-  const monthlyData = Object.entries(monthlyMap)
-    .sort(([a], [b]) => Number(a) - Number(b))
-    .map(([m, v]) => ({ month: MONTH_LABELS[Number(m)], ...v }));
+
+  projects.forEach(p => {
+    const payNote = paymentNoteMap[p.id];
+    if (payNote) {
+      const baseAmt = payNote.estimated_amount ?? p.amount ?? 0;
+      const baseMin = p.min_amount ?? baseAmt;
+      const baseMax = p.max_amount ?? baseAmt;
+      ([
+        { date: payNote.deposit_date, pct: payNote.deposit_pct },
+        { date: payNote.interim_date, pct: payNote.interim_pct },
+        { date: payNote.balance_date, pct: payNote.balance_pct },
+      ] as Array<{ date: string | null; pct: number | null }>).forEach(({ date, pct }) => {
+        if (!date || !pct) return;
+        const idx = getSlotIdx(date);
+        if (idx < 0) return;
+        rollingMap[idx].실제매출 += Math.round(baseAmt * pct / 100 / 1_000_000);
+        rollingMap[idx].최대예상 += Math.round(baseMax * pct / 100 / 1_000_000);
+        rollingMap[idx].최소예상 += Math.round(baseMin * pct / 100 / 1_000_000);
+      });
+    } else {
+      const idx = getSlotIdx(p.created_at);
+      if (idx < 0) return;
+      rollingMap[idx].최대예상 += Math.round((p.max_amount ?? 0) / 1_000_000);
+      rollingMap[idx].실제매출 += Math.round((p.amount    ?? 0) / 1_000_000);
+      rollingMap[idx].최소예상 += Math.round((p.min_amount ?? 0) / 1_000_000);
+    }
+  });
+
+  const monthlyData = rollingSlots.map((s, i) => ({ month: s.label, ...rollingMap[i] }));
 
   // 단계별 분포
   const stageMap: Record<string, number> = {};
@@ -182,7 +229,7 @@ export function SalesDashboard() {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-base font-bold text-gray-800">월별 매출 추이</h3>
-                <p className="text-xs text-gray-400 mt-0.5">단위: 백만원 · {currentYear}년</p>
+                <p className="text-xs text-gray-400 mt-0.5">단위: 백만원 · 최근 12개월</p>
               </div>
               <div className="flex items-center gap-4 text-xs text-gray-500">
                 <span className="flex items-center gap-1.5">

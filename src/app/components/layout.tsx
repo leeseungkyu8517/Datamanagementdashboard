@@ -17,6 +17,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/schedule': '스케줄 관리',
   '/my-tasks': '나의 할일',
   '/company-data': '기업 정보 수집',
+  '/documents': '견적서 / 계약서 관리',
 };
 
 function LiveClock() {
@@ -44,16 +45,35 @@ const AFFILIATION_COLOR: Record<Affiliation, string> = {
   brycenvietnam: 'text-sky-500',
 };
 
+function getActiveLang(): 'ko' | 'ja' {
+  const match = document.cookie.match(/googtrans=\/ko\/(\w+)/);
+  return match?.[1] === 'ja' ? 'ja' : 'ko';
+}
+
 export function Layout() {
   const location = useLocation();
   const pageTitle = PAGE_TITLES[location.pathname] ?? '';
   const [affiliation, setAffiliation] = useState<Affiliation>(
     () => (localStorage.getItem('affiliation') as Affiliation) ?? 'brycenkorea'
   );
+  const [activeLang, setActiveLang] = useState<'ko' | 'ja'>(getActiveLang);
 
   const handleAffiliation = (v: Affiliation) => {
     setAffiliation(v);
     localStorage.setItem('affiliation', v);
+  };
+
+  const switchLang = (lang: 'ko' | 'ja') => {
+    if (lang === activeLang) return;
+    if (lang === 'ja') {
+      document.cookie = 'googtrans=/ko/ja; path=/';
+      document.cookie = `googtrans=/ko/ja; path=/; domain=.${window.location.hostname}`;
+    } else {
+      document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:01 GMT; path=/';
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:01 GMT; path=/; domain=.${window.location.hostname}`;
+    }
+    setActiveLang(lang);
+    window.location.reload();
   };
 
   return (
@@ -71,6 +91,28 @@ export function Layout() {
           <div className="flex items-center gap-1">
             <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 mr-2">
               <LiveClock />
+            </div>
+
+            {/* 언어 전환 */}
+            <div className="flex items-center gap-1 mr-1">
+              <button
+                onClick={() => switchLang('ko')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                  activeLang === 'ko'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'text-gray-500 border-gray-200 hover:bg-gray-100'
+                }`}>
+                🇰🇷 한국어
+              </button>
+              <button
+                onClick={() => switchLang('ja')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                  activeLang === 'ja'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'text-gray-500 border-gray-200 hover:bg-gray-100'
+                }`}>
+                🇯🇵 日本語
+              </button>
             </div>
 
             <button className="relative w-9 h-9 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors">

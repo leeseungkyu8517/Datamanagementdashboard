@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { Calendar, Settings, X, Check, TrendingUp, ArrowUpRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import type { SalesProject } from '@/lib/database.types';
+import type { SalesProject, MeetingNote } from '@/lib/database.types';
 
 const FISCAL_CAL_MONTHS = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8];
 const FISCAL_MONTH_LABELS = ['9월', '10월', '11월', '12월', '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월'];
@@ -59,6 +59,7 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 
 export function PeriodForecastDashboard() {
   const [projects, setProjects] = useState<SalesProject[]>([]);
+  const [meetingNotesByProject, setMeetingNotesByProject] = useState<Record<string, MeetingNote[]>>({});
   const [loading, setLoading] = useState(true);
   const [targets, setTargets] = useState<Record<string, number>>(DEFAULT_TARGETS);
   const [editingTargets, setEditingTargets] = useState(false);
@@ -68,7 +69,7 @@ export function PeriodForecastDashboard() {
   const currentCalMonth = now.getMonth() + 1;
   const fiscalStartYear = currentCalMonth >= 9 ? now.getFullYear() : now.getFullYear() - 1;
   const currentFiscalMonthIndex = FISCAL_CAL_MONTHS.indexOf(currentCalMonth);
-  const fiscalYearLabel = `${fiscalStartYear}–${String(fiscalStartYear + 1).slice(2)} 기수`;
+  const fiscalYearLabel = `제${fiscalStartYear - 1984}기`;
 
   // 기수 내 진행 비율 (0~1)
   const fiscalProgress = (currentFiscalMonthIndex + 1) / 12;
@@ -77,12 +78,26 @@ export function PeriodForecastDashboard() {
 
   async function fetchProjects() {
     setLoading(true);
-    const { data } = await supabase
+    const { data: projData } = await supabase
       .from('sales_projects')
       .select('*')
       .gte('created_at', `${fiscalStartYear}-09-01`)
       .lte('created_at', `${fiscalStartYear + 1}-08-31T23:59:59`);
-    setProjects(data ?? []);
+    const proj = projData ?? [];
+    setProjects(proj);
+
+    if (proj.length > 0) {
+      const { data: notesData } = await supabase
+        .from('meeting_notes')
+        .select('*')
+        .in('sales_project_id', proj.map(p => p.id));
+      const byProject: Record<string, MeetingNote[]> = {};
+      (notesData ?? []).forEach(n => {
+        if (!byProject[n.sales_project_id]) byProject[n.sales_project_id] = [];
+        byProject[n.sales_project_id].push(n);
+      });
+      setMeetingNotesByProject(byProject);
+    }
     setLoading(false);
   }
 
@@ -113,16 +128,46 @@ export function PeriodForecastDashboard() {
     const getMonthRaw = (fiscalIdx: number) => {
       const calMonth = FISCAL_CAL_MONTHS[fiscalIdx];
       const year = calMonth >= 9 ? fiscalStartYear : fiscalStartYear + 1;
-      const mp = srcProjects.filter(p => {
-        const d = new Date(p.created_at);
-        return d.getFullYear() === year && d.getMonth() + 1 === calMonth;
-      });
       const s = hasOwnData ? 1 : (PER_MONTH_SCALE[region]?.[fiscalIdx] ?? REGION_SCALE[region] ?? 1);
-      return {
-        actual: mp.reduce((sum, p) => sum + (p.amount ?? 0), 0) * s,
-        max:    mp.reduce((sum, p) => sum + (p.max_amount ?? p.amount ?? 0), 0) * s,
-        min:    mp.reduce((sum, p) => sum + (p.min_amount ?? p.amount ?? 0), 0) * s,
-      };
+
+      let actualSum = 0, maxSum = 0, minSum = 0;
+
+      srcProjects.forEach(p => {
+        const notes = meetingNotesByProject[p.id] ?? [];
+        const paymentNotes = notes.filter(n =>
+          (n.deposit_pct ?? 0) + (n.interim_pct ?? 0) + (n.balance_pct ?? 0) > 0
+        );
+
+        if (paymentNotes.length > 0) {
+          const latestNote = [...paymentNotes].sort((a, b) => b.date.localeCompare(a.date))[0];
+          const baseAmt = latestNote.estimated_amount ?? p.amount ?? 0;
+          const baseMin = p.min_amount ?? baseAmt;
+          const baseMax = p.max_amount ?? baseAmt;
+
+          ([
+            { date: latestNote.deposit_date, pct: latestNote.deposit_pct },
+            { date: latestNote.interim_date, pct: latestNote.interim_pct },
+            { date: latestNote.balance_date, pct: latestNote.balance_pct },
+          ] as Array<{ date: string | null; pct: number | null }>).forEach(({ date, pct }) => {
+            if (!date || !pct) return;
+            const d = new Date(date);
+            if (d.getFullYear() === year && d.getMonth() + 1 === calMonth) {
+              actualSum += Math.round(baseAmt * pct / 100);
+              maxSum += Math.round(baseMax * pct / 100);
+              minSum += Math.round(baseMin * pct / 100);
+            }
+          });
+        } else {
+          const d = new Date(p.created_at);
+          if (d.getFullYear() === year && d.getMonth() + 1 === calMonth) {
+            actualSum += p.amount ?? 0;
+            maxSum += p.max_amount ?? p.amount ?? 0;
+            minSum += p.min_amount ?? p.amount ?? 0;
+          }
+        }
+      });
+
+      return { actual: actualSum * s, max: maxSum * s, min: minSum * s };
     };
 
     let baseActual = 0, baseMax = 0, baseMin = 0;

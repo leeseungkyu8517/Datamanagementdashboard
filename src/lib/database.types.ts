@@ -2,9 +2,10 @@ export type RegionType = 'korea' | 'japan' | 'vietnam'
 export type CompanyRank = number // 0~5: 5=S, 4=A, 3=B, 2=C, 1=D, 0=E
 export type CompanyStatus = '거래중' | '협의중' | '보류'
 export type SalesStage = '미팅 요청' | '미팅 진행' | '견적서 발송' | '가격 협의' | '계약 진행'
-export type TaskStatus = 'todo' | 'completed'
+export type TaskStatus = 'todo' | 'in_progress' | 'completed'
 export type TaskPriority = 'high' | 'medium' | 'low'
 export type ScheduleType = 'meeting' | 'deadline' | 'event'
+export type DocumentType = 'quotation' | 'contract'
 export type CompanySize = '대기업' | '중견기업' | '중소기업'
 export type CompanyGrade = number // 1~5: 5=최상위(5등급), 1=최하위(1등급)
 
@@ -97,6 +98,9 @@ export interface Schedule {
   manager: string | null
   client_name: string | null
   client_phone: string | null
+  category: string | null
+  management_item: string | null
+  detail: string | null
   created_at: string
   updated_at: string
 }
@@ -141,6 +145,23 @@ export interface TaskAttachment {
   created_at: string
 }
 
+export interface SalesDocument {
+  id: string
+  sales_project_id: string | null
+  project_name: string
+  doc_type: DocumentType
+  file_name: string
+  file_path: string | null
+  file_url: string | null
+  file_size: number | null
+  file_mime: string | null
+  quotation_date: string | null
+  contract_date: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface CompanyData {
   id: string
   name: string
@@ -180,6 +201,7 @@ export interface Database {
       task_attachments: { Row: TaskAttachment; Insert: Omit<TaskAttachment, 'id' | 'created_at'>; Update: Partial<Omit<TaskAttachment, 'id'>> }
       company_data: { Row: CompanyData; Insert: Omit<CompanyData, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Omit<CompanyData, 'id'>> }
       company_data_crawling: { Row: CompanyDataCrawling; Insert: Omit<CompanyDataCrawling, 'id' | 'created_at'>; Update: Partial<Omit<CompanyDataCrawling, 'id'>> }
+      documents: { Row: SalesDocument; Insert: Omit<SalesDocument, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Omit<SalesDocument, 'id'>> }
     }
   }
 }

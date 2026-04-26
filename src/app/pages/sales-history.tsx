@@ -235,7 +235,7 @@ export function SalesHistory() {
       if (updatedProject) {
         setProjects(prev => prev.map(p => p.id === selectedProjectId ? updatedProject : p));
       }
-      setProjectsWithNegotiation(prev => new Set([...prev, selectedProjectId]));
+      setProjectsWithNegotiation(prev => { const next = new Set(prev); next.add(selectedProjectId); return next; });
     }
 
     setSaving(false);
@@ -531,35 +531,53 @@ export function SalesHistory() {
                       </div>
                     </div>
 
-                    {/* 협의 금액 + 납금 일정 */}
-                    {note.estimated_amount != null && (
-                      <div className="mb-3 px-3 py-2 bg-emerald-50 rounded-lg border border-emerald-200">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-semibold text-emerald-600 whitespace-nowrap">협의 금액</span>
-                          <span className="text-sm font-bold text-emerald-700">{formatAmount(note.estimated_amount)}원</span>
+                    {/* 납금 일정 + 계약 예정 — 상단에 표시 */}
+                    {note.estimated_amount != null && ((note.deposit_pct ?? 0) + (note.interim_pct ?? 0) + (note.balance_pct ?? 0)) > 0 && (
+                      <div className="mb-3 rounded-lg border border-emerald-200 overflow-hidden">
+                        {/* 헤더 */}
+                        <div className="grid grid-cols-[1fr_auto] items-center px-3 py-2 bg-emerald-50 border-b border-emerald-200">
+                          <span className="text-xs font-bold text-emerald-700">납금 일정</span>
+                          <span className="text-xs text-emerald-600 font-semibold">총 {formatAmount(note.estimated_amount)}원</span>
                         </div>
-                        {((note.deposit_pct ?? 0) + (note.interim_pct ?? 0) + (note.balance_pct ?? 0)) > 0 && (
-                          <div className="space-y-1 pt-1.5 mt-1 border-t border-emerald-200">
-                            {note.deposit_date && note.deposit_pct != null && (
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-emerald-600">선금 {note.deposit_pct}% · {note.deposit_date}</span>
-                                <span className="font-semibold text-emerald-700">{formatAmount(Math.round(note.estimated_amount * note.deposit_pct / 100))}원</span>
-                              </div>
-                            )}
-                            {note.interim_date && note.interim_pct != null && (
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-emerald-600">중도금 {note.interim_pct}% · {note.interim_date}</span>
-                                <span className="font-semibold text-emerald-700">{formatAmount(Math.round(note.estimated_amount * note.interim_pct / 100))}원</span>
-                              </div>
-                            )}
-                            {note.balance_date && note.balance_pct != null && (
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-emerald-600">잔금 {note.balance_pct}% · {note.balance_date}</span>
-                                <span className="font-semibold text-emerald-700">{formatAmount(Math.round(note.estimated_amount * note.balance_pct / 100))}원</span>
-                              </div>
-                            )}
+                        {/* 컬럼 헤더 */}
+                        <div className="grid grid-cols-[44px_1fr_36px_auto] gap-x-2 px-3 py-1.5 bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                          <span>구분</span><span>지급일</span><span>비율</span><span className="text-right">금액</span>
+                        </div>
+                        {/* 선금 */}
+                        {note.deposit_date && note.deposit_pct != null && (
+                          <div className="grid grid-cols-[44px_1fr_36px_auto] gap-x-2 items-center px-3 py-2 border-b border-gray-100 last:border-0">
+                            <span className="text-[10px] font-bold text-white bg-emerald-500 px-1.5 py-0.5 rounded text-center leading-tight">선금</span>
+                            <span className="text-xs text-gray-700">{note.deposit_date}</span>
+                            <span className="text-xs text-gray-500 text-center">{note.deposit_pct}%</span>
+                            <span className="text-xs font-bold text-emerald-700 text-right">{formatAmount(Math.round(note.estimated_amount * note.deposit_pct / 100))}원</span>
                           </div>
                         )}
+                        {/* 중도금 */}
+                        {note.interim_date && note.interim_pct != null && (
+                          <div className="grid grid-cols-[44px_1fr_36px_auto] gap-x-2 items-center px-3 py-2 border-b border-gray-100 last:border-0">
+                            <span className="text-[10px] font-bold text-white bg-blue-500 px-1.5 py-0.5 rounded text-center leading-tight">중도금</span>
+                            <span className="text-xs text-gray-700">{note.interim_date}</span>
+                            <span className="text-xs text-gray-500 text-center">{note.interim_pct}%</span>
+                            <span className="text-xs font-bold text-emerald-700 text-right">{formatAmount(Math.round(note.estimated_amount * note.interim_pct / 100))}원</span>
+                          </div>
+                        )}
+                        {/* 잔금 */}
+                        {note.balance_date && note.balance_pct != null && (
+                          <div className="grid grid-cols-[44px_1fr_36px_auto] gap-x-2 items-center px-3 py-2">
+                            <span className="text-[10px] font-bold text-white bg-indigo-500 px-1.5 py-0.5 rounded text-center leading-tight">잔금</span>
+                            <span className="text-xs text-gray-700">{note.balance_date}</span>
+                            <span className="text-xs text-gray-500 text-center">{note.balance_pct}%</span>
+                            <span className="text-xs font-bold text-emerald-700 text-right">{formatAmount(Math.round(note.estimated_amount * note.balance_pct / 100))}원</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 협의 금액 단독 표시 (납금 일정 없을 때) */}
+                    {note.estimated_amount != null && ((note.deposit_pct ?? 0) + (note.interim_pct ?? 0) + (note.balance_pct ?? 0)) === 0 && (
+                      <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                        <span className="text-xs font-semibold text-emerald-600 whitespace-nowrap">협의 금액</span>
+                        <span className="text-sm font-bold text-emerald-700">{formatAmount(note.estimated_amount)}원</span>
                       </div>
                     )}
 
@@ -725,81 +743,69 @@ export function SalesHistory() {
                 </div>
 
                 {/* 납금 일정 */}
-                <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50/50">
-                  <div className="flex items-center justify-between">
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  {/* 헤더 */}
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
                     <span className="text-sm font-semibold text-gray-700">납금 일정</span>
                     {totalPct > 0 && (
                       <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                        totalPct === 100
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-red-100 text-red-600'
+                        totalPct === 100 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
                       }`}>
-                        합계 {totalPct}% {totalPct === 100 ? '✓' : '— 100%가 아님'}
+                        합계 {totalPct}% {totalPct === 100 ? '✓' : '≠ 100%'}
                       </span>
                     )}
                   </div>
-
+                  {/* 컬럼 헤더 */}
+                  <div className="grid grid-cols-[52px_1fr_68px_1fr] gap-x-3 px-4 py-2 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/50">
+                    <span>구분</span><span>지급 일자</span><span>비율</span><span>금액</span>
+                  </div>
                   {/* 선금 */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">선금 지급</label>
-                    <div className="grid grid-cols-[1fr_90px] gap-2">
-                      <input name="deposit_date" type="date" defaultValue={editingNote?.deposit_date ?? ''}
-                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      <div className="relative">
-                        <input type="number" min="0" max="100" placeholder="%"
-                          value={depositPct ?? ''}
-                          onChange={e => setDepositPct(e.target.value ? Number(e.target.value) : null)}
-                          className="w-full px-3 py-2 pr-7 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
-                      </div>
+                  <div className="grid grid-cols-[52px_1fr_68px_1fr] gap-x-3 items-center px-4 py-2.5 border-b border-gray-100">
+                    <span className="text-[11px] font-bold text-emerald-600">선금</span>
+                    <input name="deposit_date" type="date" defaultValue={editingNote?.deposit_date ?? ''}
+                      className="px-2 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white w-full" />
+                    <div className="relative">
+                      <input type="number" min="0" max="100" placeholder="0"
+                        value={depositPct ?? ''}
+                        onChange={e => setDepositPct(e.target.value ? Number(e.target.value) : null)}
+                        className="w-full px-2 py-1.5 pr-6 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white" />
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">%</span>
                     </div>
-                    {noteEstAmt != null && (depositPct ?? 0) > 0 && (
-                      <div className="text-xs text-emerald-600 mt-1 font-medium">
-                        → {formatAmount(Math.round(noteEstAmt * (depositPct ?? 0) / 100))}원
-                      </div>
-                    )}
+                    <span className="text-xs font-semibold text-emerald-600">
+                      {noteEstAmt && (depositPct ?? 0) > 0 ? formatAmount(Math.round(noteEstAmt * (depositPct ?? 0) / 100)) + '원' : '-'}
+                    </span>
                   </div>
-
                   {/* 중도금 */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">중도금 지급</label>
-                    <div className="grid grid-cols-[1fr_90px] gap-2">
-                      <input name="interim_date" type="date" defaultValue={editingNote?.interim_date ?? ''}
-                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      <div className="relative">
-                        <input type="number" min="0" max="100" placeholder="%"
-                          value={interimPct ?? ''}
-                          onChange={e => setInterimPct(e.target.value ? Number(e.target.value) : null)}
-                          className="w-full px-3 py-2 pr-7 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
-                      </div>
+                  <div className="grid grid-cols-[52px_1fr_68px_1fr] gap-x-3 items-center px-4 py-2.5 border-b border-gray-100">
+                    <span className="text-[11px] font-bold text-blue-600">중도금</span>
+                    <input name="interim_date" type="date" defaultValue={editingNote?.interim_date ?? ''}
+                      className="px-2 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white w-full" />
+                    <div className="relative">
+                      <input type="number" min="0" max="100" placeholder="0"
+                        value={interimPct ?? ''}
+                        onChange={e => setInterimPct(e.target.value ? Number(e.target.value) : null)}
+                        className="w-full px-2 py-1.5 pr-6 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white" />
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">%</span>
                     </div>
-                    {noteEstAmt != null && (interimPct ?? 0) > 0 && (
-                      <div className="text-xs text-emerald-600 mt-1 font-medium">
-                        → {formatAmount(Math.round(noteEstAmt * (interimPct ?? 0) / 100))}원
-                      </div>
-                    )}
+                    <span className="text-xs font-semibold text-emerald-600">
+                      {noteEstAmt && (interimPct ?? 0) > 0 ? formatAmount(Math.round(noteEstAmt * (interimPct ?? 0) / 100)) + '원' : '-'}
+                    </span>
                   </div>
-
                   {/* 잔금 */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">잔금 지급</label>
-                    <div className="grid grid-cols-[1fr_90px] gap-2">
-                      <input name="balance_date" type="date" defaultValue={editingNote?.balance_date ?? ''}
-                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      <div className="relative">
-                        <input type="number" min="0" max="100" placeholder="%"
-                          value={balancePct ?? ''}
-                          onChange={e => setBalancePct(e.target.value ? Number(e.target.value) : null)}
-                          className="w-full px-3 py-2 pr-7 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
-                      </div>
+                  <div className="grid grid-cols-[52px_1fr_68px_1fr] gap-x-3 items-center px-4 py-2.5">
+                    <span className="text-[11px] font-bold text-indigo-600">잔금</span>
+                    <input name="balance_date" type="date" defaultValue={editingNote?.balance_date ?? ''}
+                      className="px-2 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white w-full" />
+                    <div className="relative">
+                      <input type="number" min="0" max="100" placeholder="0"
+                        value={balancePct ?? ''}
+                        onChange={e => setBalancePct(e.target.value ? Number(e.target.value) : null)}
+                        className="w-full px-2 py-1.5 pr-6 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white" />
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">%</span>
                     </div>
-                    {noteEstAmt != null && (balancePct ?? 0) > 0 && (
-                      <div className="text-xs text-emerald-600 mt-1 font-medium">
-                        → {formatAmount(Math.round(noteEstAmt * (balancePct ?? 0) / 100))}원
-                      </div>
-                    )}
+                    <span className="text-xs font-semibold text-emerald-600">
+                      {noteEstAmt && (balancePct ?? 0) > 0 ? formatAmount(Math.round(noteEstAmt * (balancePct ?? 0) / 100)) + '원' : '-'}
+                    </span>
                   </div>
                 </div>
 

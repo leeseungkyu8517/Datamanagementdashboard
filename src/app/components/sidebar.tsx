@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Building2, TrendingUp, BarChart3, Calendar, ChevronDown, ChevronRight, Database, CheckSquare, Target, Briefcase } from 'lucide-react';
+import { Building2, TrendingUp, BarChart3, Calendar, ChevronDown, ChevronRight, Database, CheckSquare, Target, Briefcase, FolderOpen } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
 import logoImage from 'figma:asset/22188a559e2ae35bb209914ca8f5f374d6231efc.png';
 
@@ -14,6 +14,7 @@ const SECTION_LABELS: Record<string, string> = {
   '/my-tasks': '업무',
   '/sales': '영업',
   '/meeting-prep': '영업',
+  '/documents': '영업',
   '/companies/korea': '지사 관리',
   '/company-data': '분석',
   '/dashboard': '대시보드',
@@ -28,6 +29,7 @@ export function Sidebar() {
     { path: '/my-tasks', icon: CheckSquare, label: '나의 할일' },
     { path: '/sales', icon: TrendingUp, label: '영업 이력 관리' },
     { path: '/meeting-prep', icon: Briefcase, label: '미팅 준비' },
+    { path: '/documents', icon: FolderOpen, label: '견적서 / 계약서 관리' },
     {
       path: '/companies/korea',
       icon: Building2,
