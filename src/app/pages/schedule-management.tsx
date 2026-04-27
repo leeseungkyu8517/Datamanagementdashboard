@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Search, X, Trash2 } from 'lucide-react';
+import { AiButton } from '@/app/components/ai-button';
 import { supabase } from '@/lib/supabase';
 import type { Schedule } from '@/lib/database.types';
 
@@ -450,7 +451,13 @@ export function ScheduleManagement() {
 
               {/* 상세 내용 */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1.5">상세 내용</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-gray-500">상세 내용</label>
+                  <AiButton
+                    getPrompt={() => `일정 "${formData.title}"${formData.company ? ` (${formData.company})` : ''} 에 대한 상세 내용을 2-3문장으로 작성해줘. 목적, 준비사항, 주의사항 중심으로. 한국어, 간결하게.`}
+                    onResult={setDetail}
+                  />
+                </div>
                 <textarea value={detail}
                   onChange={e => setDetail(e.target.value)}
                   rows={3}

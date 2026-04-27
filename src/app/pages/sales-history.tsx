@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Search, Plus, ChevronDown, Calendar, Edit2, Trash2, X, Brain } from 'lucide-react';
+import { AiButton } from '@/app/components/ai-button';
 import { supabase } from '@/lib/supabase';
 import type { SalesProject, MeetingNote, Company, SalesPersonnel, SalesStage, RegionType } from '@/lib/database.types';
 
@@ -56,6 +57,11 @@ export function SalesHistory() {
 
   // 선택된 기업 ID (폼 내부용)
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
+  // AI 자동 작성용 controlled 필드
+  const [formProjectName, setFormProjectName] = useState('');
+  const [formSummary, setFormSummary] = useState('');
+  const [formOverview, setFormOverview] = useState('');
+  const [noteContent, setNoteContent] = useState('');
 
   useEffect(() => {
     fetchAll();
@@ -68,8 +74,17 @@ export function SalesHistory() {
       setDepositPct(editingNote?.deposit_pct ?? null);
       setInterimPct(editingNote?.interim_pct ?? null);
       setBalancePct(editingNote?.balance_pct ?? null);
+      setNoteContent(editingNote?.content ?? '');
     }
   }, [showNoteModal]);
+
+  useEffect(() => {
+    if (showProjectModal) {
+      setFormProjectName(editingProject?.project_name ?? '');
+      setFormSummary(editingProject?.summary ?? '');
+      setFormOverview(editingProject?.project_overview ?? '');
+    }
+  }, [showProjectModal]);
 
   async function fetchAll() {
     setLoading(true);
@@ -619,7 +634,7 @@ export function SalesHistory() {
             <form onSubmit={handleSaveProject} className="px-6 py-4 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">프로젝트 명 *</label>
-                <input name="project_name" type="text" defaultValue={editingProject?.project_name} required
+                <input name="project_name" type="text" value={formProjectName} onChange={e => setFormProjectName(e.target.value)} required
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
               </div>
               <div>
@@ -680,13 +695,25 @@ export function SalesHistory() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">주요 영업 내용</label>
-                <textarea name="summary" defaultValue={editingProject?.summary ?? ''} rows={3}
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-semibold text-gray-700">주요 영업 내용</label>
+                  <AiButton
+                    getPrompt={() => `프로젝트 "${formProjectName}"(${companies.find(c => c.id === selectedCompanyId)?.name ?? '고객사'}) 영업 요약을 2-3문장으로 작성해줘. 한국어, 간결하게.`}
+                    onResult={setFormSummary}
+                  />
+                </div>
+                <textarea name="summary" value={formSummary} onChange={e => setFormSummary(e.target.value)} rows={3}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">프로젝트 개요</label>
-                <textarea name="project_overview" defaultValue={editingProject?.project_overview ?? ''} rows={3}
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-semibold text-gray-700">프로젝트 개요</label>
+                  <AiButton
+                    getPrompt={() => `프로젝트 "${formProjectName}"(${companies.find(c => c.id === selectedCompanyId)?.name ?? '고객사'}) 프로젝트 개요를 3-4문장으로 작성해줘. 배경, 목표, 기대효과 중심으로. 한국어, 간결하게.`}
+                    onResult={setFormOverview}
+                  />
+                </div>
+                <textarea name="project_overview" value={formOverview} onChange={e => setFormOverview(e.target.value)} rows={3}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
               </div>
               <div className="flex gap-3 pt-2 border-t border-gray-200">
@@ -810,8 +837,14 @@ export function SalesHistory() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">회의 내용</label>
-                  <textarea name="content" defaultValue={editingNote?.content ?? ''} rows={6}
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold text-gray-700">회의 내용</label>
+                    <AiButton
+                      getPrompt={() => `영업 회의 내용을 작성해줘. 프로젝트: ${projects.find(p => p.id === selectedProjectId)?.project_name ?? '미정'}. 주요 논의 사항, 결정 사항, 다음 액션 아이템을 포함해 3-5문장으로. 한국어, 간결하게.`}
+                      onResult={setNoteContent}
+                    />
+                  </div>
+                  <textarea name="content" value={noteContent} onChange={e => setNoteContent(e.target.value)} rows={6}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
                 </div>
               </div>

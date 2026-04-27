@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Search, Plus, Calendar, Tag, Trash2, Edit2, X, User, Phone, FileText, ExternalLink, Clock } from 'lucide-react';
+import { AiButton } from '@/app/components/ai-button';
 import { supabase } from '@/lib/supabase';
 import type { Task, TaskHistory, TaskAttachment, TaskPriority, TaskStatus, Schedule } from '@/lib/database.types';
 
@@ -42,8 +43,17 @@ export function MyTasks() {
   const [saving, setSaving]                 = useState(false);
   const [draggingId, setDraggingId]         = useState<string | null>(null);
   const [dragOverCol, setDragOverCol]       = useState<string | null>(null);
+  const [taskTitle, setTaskTitle]           = useState('');
+  const [taskDesc, setTaskDesc]             = useState('');
 
   useEffect(() => { fetchAll(); }, []);
+
+  useEffect(() => {
+    if (showTaskModal) {
+      setTaskTitle(editingTask?.title ?? '');
+      setTaskDesc(editingTask?.description ?? '');
+    }
+  }, [showTaskModal]);
 
   async function fetchAll() {
     setLoading(true);
@@ -430,12 +440,18 @@ export function MyTasks() {
             <form onSubmit={handleSaveTask} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 mb-1">제목 *</label>
-                <input name="title" type="text" defaultValue={editingTask?.title} required
+                <input name="title" type="text" value={taskTitle} onChange={e => setTaskTitle(e.target.value)} required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
               </div>
               <div>
-                <label className="block text-sm text-gray-700 mb-1">설명</label>
-                <textarea name="description" rows={3} defaultValue={editingTask?.description ?? ''}
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm text-gray-700">설명</label>
+                  <AiButton
+                    getPrompt={() => `할일 "${taskTitle}" 에 대한 상세 설명을 2-3문장으로 작성해줘. 목적, 처리 방법, 주의사항 중심으로. 한국어, 간결하게.`}
+                    onResult={setTaskDesc}
+                  />
+                </div>
+                <textarea name="description" rows={3} value={taskDesc} onChange={e => setTaskDesc(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-4">
