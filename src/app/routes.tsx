@@ -20,7 +20,7 @@ export const router = createBrowserRouter([
     path: '/',
     Component: Layout,
     children: [
-      { index: true, Component: CompanyKorea },
+      { index: true, Component: MyTasks },
       { path: 'companies/korea', Component: CompanyKorea },
       { path: 'companies/korea/personnel', Component: SalesPersonnel },
       { path: 'companies/japan', Component: CompanyJapan },

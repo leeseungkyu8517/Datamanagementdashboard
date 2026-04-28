@@ -8,13 +8,15 @@ import type { CompanyData, CompanyDataCrawling, BrycenKeyword, DiscoveredCompany
 
 const ITEMS_PER_PAGE = 8;
 
-const getGradeColor = (grade: CompanyData['grade']): string => {
-  if (grade === null || grade === undefined) return 'bg-gray-100 text-gray-500 border-gray-300';
-  if (grade >= 5) return 'bg-amber-100 text-amber-700 border-amber-500';
-  if (grade >= 4) return 'bg-purple-100 text-purple-700 border-purple-500';
-  if (grade >= 3) return 'bg-blue-100 text-blue-700 border-blue-500';
-  if (grade >= 2) return 'bg-green-100 text-green-700 border-green-500';
-  return 'bg-gray-100 text-gray-500 border-gray-400';
+const getGradeColor = (label: CompanyData['grade_label']): string => {
+  switch (label) {
+    case 'VIP':      return 'bg-amber-100 text-amber-700 border-amber-500';
+    case 'Core':     return 'bg-purple-100 text-purple-700 border-purple-500';
+    case 'Active':   return 'bg-blue-100 text-blue-700 border-blue-500';
+    case 'Manage':   return 'bg-green-100 text-green-700 border-green-500';
+    case 'Inactive': return 'bg-gray-100 text-gray-500 border-gray-400';
+    default:         return 'bg-gray-100 text-gray-400 border-gray-300';
+  }
 };
 
 const getSizeColor = (size: CompanyData['size']) => {
@@ -55,6 +57,7 @@ export function CompanyDataCollection() {
   const [addingKeyword, setAddingKeyword] = useState(false);
   const [deletingKeyword, setDeletingKeyword] = useState<string | null>(null);
   const newKeywordRef = useRef<HTMLInputElement>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
 
   // ── 기업 발굴 모달 상태 ───────────────────────────────────────────────────
   const [showDiscoverModal, setShowDiscoverModal] = useState(false);
@@ -145,15 +148,36 @@ export function CompanyDataCollection() {
       const { data, error } = await supabase.functions.invoke('ai-grading', {
         body: { company_id: companyId },
       });
-      if (error) throw error;
+      if (error) {
+        // FunctionsHttpError에서 실제 에러 메시지 추출 시도
+        let detail = String(error);
+        try {
+          const body = await (error as { context?: Response }).context?.json();
+          if (body?.error) detail = body.error;
+          if (body?.debug) console.log('[ai-grading debug]', body.debug);
+        } catch (_) { /* ignore */ }
+        throw new Error(detail);
+      }
+      if (data?.error) throw new Error(data.error);
       setCompanies(prev => prev.map(c =>
         c.id === companyId
-          ? { ...c, grade: data.grade, ai_summary: data.reason }
+          ? {
+              ...c,
+              grade_label: data.grade_label,
+              grade_score: data.grade_score,
+              score_size: data.score_size,
+              score_solution: data.score_solution,
+              score_relation: data.score_relation,
+              score_growth: data.score_growth,
+              score_risk: data.score_risk,
+              ai_summary: data.reason,
+            }
           : c
       ));
+      if (data?.debug) console.log('[ai-grading debug]', data.debug);
       setFunctionResult(prev => ({
         ...prev,
-        [companyId]: { type: 'success', message: `등급 판정 완료: ${data.grade}등급 (점수 ${data.score})` },
+        [companyId]: { type: 'success', message: `등급 판정 완료: ${data.grade_label} (${data.grade_score}점)` },
       }));
     } catch (e) {
       setFunctionResult(prev => ({ ...prev, [companyId]: { type: 'error', message: `등급 판정 실패: ${String(e)}` } }));
@@ -256,6 +280,7 @@ export function CompanyDataCollection() {
 
   async function addDiscoveredCompany(company: DiscoveredCompany) {
     setAddingCompany(prev => ({ ...prev, [company.name]: true }));
+    let insertedId: string | null = null;
     try {
       const { data: inserted, error } = await supabase
         .from('company_data')
@@ -264,11 +289,20 @@ export function CompanyDataCollection() {
         .single();
       if (error) throw error;
       setAddedCompanies(prev => new Set([...prev, company.name]));
-      if (inserted) setCompanies(prev => [...prev, inserted]);
+      if (inserted) {
+        insertedId = inserted.id;
+        setCompanies(prev => [inserted, ...prev]);
+        setCurrentPage(1);
+        listContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setAddingCompany(prev => ({ ...prev, [company.name]: false }));
+    }
+    if (insertedId) {
+      await runCrawling(insertedId);
+      await runGrading(insertedId);
     }
   }
 
@@ -296,7 +330,7 @@ export function CompanyDataCollection() {
         <p className="text-sm text-gray-500 mt-1">크롤링을 통해 수집된 기업 정보를 관리합니다</p>
       </div>
 
-      <div className="flex-1 overflow-auto bg-[#f5f6fa] p-8">
+      <div ref={listContainerRef} className="flex-1 overflow-auto bg-[#f5f6fa] p-8">
         {/* 검색 + 버튼 바 */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
           <div className="flex items-center gap-2">
@@ -363,9 +397,12 @@ export function CompanyDataCollection() {
                         <div className="flex-1 cursor-pointer" onClick={() => toggleExpand(company.id)}>
                           <div className="flex items-center gap-3 mb-3">
                             <h3 className="text-lg text-gray-900 font-bold">{company.name}</h3>
-                            {company.grade && (
-                              <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs border ${getGradeColor(company.grade)}`}>
-                                {company.grade}등급
+                            {company.grade_label && (
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold border ${getGradeColor(company.grade_label)}`}>
+                                {company.grade_label}
+                                {company.grade_score != null && (
+                                  <span className="opacity-60 font-normal">{company.grade_score}점</span>
+                                )}
                               </span>
                             )}
                             {company.size && (
@@ -490,6 +527,34 @@ export function CompanyDataCollection() {
 
                     {isExpanded && (
                       <div className="border-t border-gray-200 bg-gray-50 p-6">
+                        {/* 점수 상세 */}
+                        {company.grade_label && (
+                          <div className="mb-6">
+                            <h4 className="text-sm font-semibold text-gray-700 mb-3">등급 점수 상세</h4>
+                            <div className="grid grid-cols-5 gap-3">
+                              {[
+                                { label: '기업 규모', score: company.score_size, max: 20 },
+                                { label: '솔루션 적합도', score: company.score_solution, max: 30 },
+                                { label: '관계 밀도', score: company.score_relation, max: 30 },
+                                { label: '성장 시그널', score: company.score_growth, max: 10 },
+                                { label: '거래 리스크', score: company.score_risk, max: 10 },
+                              ].map(({ label, score, max }) => (
+                                <div key={label} className="bg-white rounded-lg border border-gray-200 p-3 text-center">
+                                  <div className="text-xs text-gray-500 mb-1">{label}</div>
+                                  <div className="text-lg font-bold text-gray-900">{score ?? '-'}</div>
+                                  <div className="text-xs text-gray-400">/ {max}</div>
+                                  <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-blue-400 rounded-full"
+                                      style={{ width: score != null ? `${(score / max) * 100}%` : '0%' }}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         <h4 className="text-sm font-semibold text-gray-700 mb-4">
                           크롤링 이력 ({isCrawlingLoading ? '로드 중...' : `${crawlingData.length}건`})
                         </h4>

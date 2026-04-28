@@ -23,7 +23,7 @@ const SECTION_LABELS: Record<string, string> = {
 
 export function Sidebar() {
   const location = useLocation();
-  const [expandedMenu, setExpandedMenu] = useState<string | null>('/companies/korea');
+  const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
   const allMenuItems: MenuItem[] = [
     { path: '/my-tasks', icon: CheckSquare, label: '나의 할일' },

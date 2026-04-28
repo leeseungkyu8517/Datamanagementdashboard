@@ -12,111 +12,38 @@ const json = (data: unknown, status = 200) =>
     headers: { ...CORS, "Content-Type": "application/json" },
   });
 
-interface GradeResult {
-  grade: number;
-  score: number;
-  reason: string;
+type GradeLabel = "VIP" | "Core" | "Active" | "Manage" | "Inactive";
+
+function calcSizeScore(size: string | null): number {
+  switch (size) {
+    case "대기업":   return 20;
+    case "중견기업":  return 16;
+    case "중기업":   return 12;
+    case "소기업":   return 8;
+    case "1인 기업": return 4;
+    default:        return 8;
+  }
 }
 
-/** Anthropic API 호출 → 등급 판정 */
-async function gradeWithClaude(
-  company: Record<string, unknown>,
-  allKeywords: string[],
-  apiKey: string
-): Promise<GradeResult> {
-  const prompt = `다음 기업 데이터를 B2B IT 영업(SAP/ERP/디지털 전환 솔루션) 관점에서 분석해서 등급을 판정해줘.
-
-기업 정보:
-- 기업명: ${company.name}
-- 산업군: ${company.industry ?? "미상"}
-- 기업 규모: ${company.size ?? "미상"}
-- 매출: ${company.revenue ?? "미상"}
-- 국가: ${company.country ?? "미상"}
-- 웹사이트 크롤링 키워드: ${allKeywords.slice(0, 15).join(", ") || "없음"}
-
-등급 기준 (IT 솔루션 영업 관점):
-5등급: 최우선 공략 — 대기업 이상, 디지털 전환 적극 추진, 고매출, IT 투자 활발
-4등급: 우선 공략 — 중견기업 이상, IT/디지털 관심 높음
-3등급: 보통 — 중소~중견기업, IT 관심 있으나 소극적
-2등급: 관심도 낮음 — 소규모, IT 투자 소극적
-1등급: 영업 가치 낮음 — 정보 부족 또는 IT 비관련 업종
-
-반드시 아래 JSON 형식으로만 응답해 (다른 텍스트 없이):
-{"grade":4,"score":7,"reason":"판정 이유를 2~3문장으로 한국어로..."}
-
-grade는 1~5 정수, score는 0~9 정수`;
-
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 400,
-      messages: [{ role: "user", content: prompt }],
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
-    throw new Error(`Anthropic API ${res.status}: ${err.error?.message ?? "unknown"}`);
-  }
-
-  const data = await res.json() as { content: Array<{ text: string }> };
-  const text = data.content[0].text.trim();
-
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("AI 응답에서 JSON을 찾을 수 없습니다");
-
-  const parsed = JSON.parse(jsonMatch[0]) as { grade?: unknown; score?: unknown; reason?: unknown };
-  const grade = typeof parsed.grade === "number" ? Math.min(5, Math.max(1, Math.round(parsed.grade))) : 1;
-  const score = typeof parsed.score === "number" ? Math.min(9, Math.max(0, Math.round(parsed.score))) : 0;
-  const reason = typeof parsed.reason === "string" ? parsed.reason : `${grade}등급 판정`;
-
-  return { grade, score, reason };
+function scoreToLabel(score: number): GradeLabel {
+  if (score >= 71) return "VIP";
+  if (score >= 51) return "Core";
+  if (score >= 31) return "Active";
+  if (score >= 16) return "Manage";
+  return "Inactive";
 }
 
-/** 규칙 기반 등급 (AI 미설정 또는 실패 시 fallback) */
-function ruleBasedGrade(
-  company: Record<string, unknown>,
-  allKeywords: string[]
-): GradeResult {
-  let score = 0;
-
-  const size = company.size as string | null;
-  if (size === "대기업") score += 3;
-  else if (size === "중견기업") score += 2;
-  else if (size === "중소기업") score += 1;
-
-  const revenue = company.revenue as string | null;
-  if (revenue) {
-    const num = parseFloat(revenue.replace(/[^0-9.]/g, ""));
-    if (!isNaN(num)) {
-      const inAeok = /조/.test(revenue) ? num * 10000 : num;
-      if (inAeok >= 10000) score += 3;
-      else if (inAeok >= 1000) score += 2;
-      else if (inAeok >= 100) score += 1;
-    }
-  }
-
-  const HIGH = ["디지털", "채용", "AI", "클라우드", "ERP", "SAP", "IT투자", "자동화"];
-  const kwStr = allKeywords.join(" ").toLowerCase();
-  for (const k of HIGH) if (kwStr.includes(k.toLowerCase())) score += 1;
-  score = Math.min(score, 9);
-
-  const grade = score >= 8 ? 5 : score >= 6 ? 4 : score >= 4 ? 3 : score >= 2 ? 2 : 1;
-  const labels = ["", "영업 가치 낮음", "관심도 낮음", "보통", "우선 공략", "최우선 공략"];
-  const reason = `${labels[grade]} (${grade}등급). 규모: ${size ?? "미상"}, 매출: ${revenue ?? "미상"}.`;
-
-  return { grade, score, reason };
+function toValidScore(v: unknown, max: number): number {
+  const n = typeof v === "number" ? Math.round(v) : 0;
+  const step = max / 5;
+  const valid = [max, max - step, max - step * 2, max - step * 3, max - step * 4].map(Math.round);
+  return valid.includes(n) ? n : Math.round(max * 0.6); // 기본 C등급
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  const debugLog: string[] = [];
 
   try {
     const supabase = createClient(
@@ -124,60 +51,160 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+    debugLog.push("supabase client created");
 
-    const { company_id } = await req.json();
+    const body = await req.json();
+    const company_id = body?.company_id;
     if (!company_id) return json({ error: "company_id 필수" }, 400);
+    debugLog.push(`company_id: ${company_id}`);
 
-    // 1. 기업 정보 조회
+    // 1. 기업 정보
     const { data: company, error: compErr } = await supabase
       .from("company_data")
       .select("*")
       .eq("id", company_id)
       .single();
+    if (compErr || !company) {
+      return json({ error: `기업 조회 실패: ${compErr?.message ?? "not found"}` }, 404);
+    }
+    debugLog.push(`company: ${company.name}`);
 
-    if (compErr || !company) return json({ error: "기업을 찾을 수 없습니다" }, 404);
-
-    // 2. 크롤링 이력 조회 (최근 3건)
+    // 2. 크롤링 키워드
     const { data: crawlingData } = await supabase
       .from("company_data_crawling")
       .select("keywords")
       .eq("company_data_id", company_id)
       .order("collected_at", { ascending: false })
       .limit(3);
+    debugLog.push(`crawling rows: ${crawlingData?.length ?? 0}`);
 
-    // 3. 전체 키워드 수집
-    const allKeywords = [
+    const allKeywords: string[] = [
       ...((company.keywords as string[]) ?? []),
       ...(crawlingData?.flatMap((c: { keywords: string[] | null }) => c.keywords ?? []) ?? []),
     ];
 
-    // 4. AI 등급 판정
-    let result: GradeResult;
-
-    if (apiKey) {
-      try {
-        result = await gradeWithClaude(company as Record<string, unknown>, allKeywords, apiKey);
-      } catch (_e) {
-        console.error("Claude grading failed, using rule-based fallback:", _e);
-        result = ruleBasedGrade(company as Record<string, unknown>, allKeywords);
+    // 3. 미팅 횟수
+    let meetingCount = 0;
+    try {
+      const { data: projects } = await supabase
+        .from("sales_projects")
+        .select("id")
+        .eq("company_name", company.name);
+      const projectIds = (projects ?? []).map((p: { id: string }) => p.id);
+      if (projectIds.length > 0) {
+        const { count } = await supabase
+          .from("meeting_notes")
+          .select("id", { count: "exact", head: true })
+          .in("sales_project_id", projectIds);
+        meetingCount = count ?? 0;
       }
-    } else {
-      result = ruleBasedGrade(company as Record<string, unknown>, allKeywords);
+    } catch (_e) {
+      debugLog.push(`meeting count error: ${_e}`);
+    }
+    debugLog.push(`meetingCount: ${meetingCount}`);
+
+    const score_size = calcSizeScore(company.size as string | null);
+    let score_solution = 18;
+    let score_relation = 18;
+    let score_growth = 6;
+    let score_risk = 6;
+    let reason = "";
+
+    // 4. AI 판정
+    if (apiKey) {
+      debugLog.push("trying AI grading");
+      try {
+        const kwStr = allKeywords.slice(0, 20).join(", ") || "없음";
+        const prompt = `B2B IT 영업(SAP/ERP/디지털 전환) 관점에서 아래 기업을 분석해 점수를 매겨줘.
+
+기업명: ${company.name}
+산업군: ${company.industry ?? "미상"}
+규모: ${company.size ?? "미상"}
+매출: ${company.revenue ?? "미상"}
+크롤링 키워드: ${kwStr}
+미팅 횟수: ${meetingCount}회
+
+배점표:
+① 솔루션 적합도 max 30: A=30, B=24, C=18, D=12, E=6
+② 관계 밀도 max 30: A=30, B=24, C=18, D=12, E=6
+③ 성장 시그널 max 10: A=10, B=8, C=6, D=4, E=2
+④ 거래 리스크 max 10: A=10, B=8, C=6, D=4, E=2
+
+JSON만 응답:
+{"score_solution":24,"score_relation":18,"score_growth":8,"score_risk":6,"reason":"이유"}`;
+
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 400,
+            messages: [{ role: "user", content: prompt }],
+          }),
+          signal: AbortSignal.timeout(25_000),
+        });
+
+        if (res.ok) {
+          const data = await res.json() as { content: Array<{ text: string }> };
+          const text = data.content[0].text.trim();
+          const match = text.match(/\{[\s\S]*\}/);
+          if (match) {
+            const parsed = JSON.parse(match[0]) as Record<string, unknown>;
+            score_solution = toValidScore(parsed.score_solution, 30);
+            score_relation = toValidScore(parsed.score_relation, 30);
+            score_growth   = toValidScore(parsed.score_growth, 10);
+            score_risk     = toValidScore(parsed.score_risk, 10);
+            reason = typeof parsed.reason === "string" ? parsed.reason : "";
+            debugLog.push("AI grading success");
+          }
+        } else {
+          debugLog.push(`Anthropic ${res.status}`);
+        }
+      } catch (_e) {
+        debugLog.push(`AI error: ${_e}`);
+      }
     }
 
-    const { grade, score, reason } = result;
+    // 5. rule-based fallback reason
+    if (!reason) {
+      const kwStr = allKeywords.join(" ").toLowerCase();
+      const SOLUTION_KW = ["erp", "sap", "디지털", "클라우드", "자동화", "it투자"];
+      const GROWTH_KW   = ["채용", "투자", "지사", "설립", "확장"];
+      const sHits = SOLUTION_KW.filter(k => kwStr.includes(k)).length;
+      const gHits = GROWTH_KW.filter(k => kwStr.includes(k)).length;
+      if (!apiKey) {
+        score_solution = sHits >= 3 ? 30 : sHits >= 2 ? 24 : sHits >= 1 ? 18 : 12;
+        score_relation = meetingCount >= 5 ? 30 : meetingCount >= 3 ? 24 : meetingCount >= 1 ? 18 : 12;
+        score_growth   = gHits >= 2 ? 10 : gHits >= 1 ? 8 : 6;
+        score_risk     = score_size >= 16 ? 8 : 6;
+      }
+      reason = `규칙 기반 판정. 규모: ${company.size ?? "미상"}, 미팅: ${meetingCount}회.`;
+      debugLog.push("rule-based fallback");
+    }
 
-    // 5. 등급 업데이트
+    const grade_score = score_size + score_solution + score_relation + score_growth + score_risk;
+    const grade_label = scoreToLabel(grade_score);
+    debugLog.push(`result: ${grade_label} ${grade_score}점`);
+
+    // 6. DB 업데이트
+    const updatePayload = { grade_label, grade_score, score_size, score_solution, score_relation, score_growth, score_risk, ai_summary: reason };
+    debugLog.push(`updating: ${JSON.stringify(Object.keys(updatePayload))}`);
+
     const { error: updateErr } = await supabase
       .from("company_data")
-      .update({ grade, ai_summary: reason })
+      .update(updatePayload)
       .eq("id", company_id);
 
-    if (updateErr) throw updateErr;
+    if (updateErr) {
+      return json({ error: `DB 업데이트 실패: ${updateErr.message}`, debug: debugLog }, 500);
+    }
 
-    return json({ success: true, grade, reason, score });
+    return json({ success: true, grade_label, grade_score, score_size, score_solution, score_relation, score_growth, score_risk, reason, debug: debugLog });
   } catch (err) {
-    console.error(err);
-    return json({ error: String(err) }, 500);
+    return json({ error: String(err), debug: debugLog }, 500);
   }
 });

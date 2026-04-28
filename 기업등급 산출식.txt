@@ -1,0 +1,8 @@
+  - AI 프롬프트를 새 배점표 기반으로 교체
+  - 기업 규모 → size 필드로 자동 계산 (대기업=20, 중견기업=16, 중기업=12, 소기업=8, 1인기업=4)
+  - 성장 시그널 → 크롤링 키워드에서 AI 판단 (채용공고, 투자유치, 신규지사, 예산 보유)
+  - 솔루션 적합도 → AI가 industry/keywords 기반 판단
+  - 거래 리스크 → AI가 키워드 기반 판단
+  - 관계 밀도 → meeting_notes 건수 조회해서 자동 반영 + AI 보정
+  - 반환: { grade_label, grade_score, score_size, score_solution, score_relation, score_growth, score_risk, reason }
+  - DB 업데이트 시 7개 새 컬럼 모두 저장

@@ -6,8 +6,9 @@ export type TaskStatus = 'todo' | 'in_progress' | 'completed'
 export type TaskPriority = 'high' | 'medium' | 'low'
 export type ScheduleType = 'meeting' | 'deadline' | 'event'
 export type DocumentType = 'quotation' | 'contract'
-export type CompanySize = '대기업' | '중견기업' | '중소기업'
+export type CompanySize = '대기업' | '중견기업' | '중기업' | '소기업' | '1인 기업'
 export type CompanyGrade = number // 1~5: 5=최상위(5등급), 1=최하위(1등급)
+export type CompanyGradeLabel = 'VIP' | 'Core' | 'Active' | 'Manage' | 'Inactive'
 
 export interface Company {
   id: string
@@ -173,6 +174,13 @@ export interface CompanyData {
   website: string | null
   ai_summary: string | null
   grade: CompanyGrade | null
+  grade_label: CompanyGradeLabel | null
+  grade_score: number | null
+  score_size: number | null
+  score_solution: number | null
+  score_relation: number | null
+  score_growth: number | null
+  score_risk: number | null
   created_at: string
   updated_at: string
 }
