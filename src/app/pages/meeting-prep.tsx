@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, X, BookmarkPlus, BookmarkCheck, ExternalLink, Edit2, Trash2, Calendar, FileText, AlertCircle } from 'lucide-react';
+import { Search, Plus, X, BookmarkPlus, BookmarkCheck, ExternalLink, Edit2, Trash2, Calendar, FileText, AlertCircle, Sparkles, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import type { MeetingBrief } from '@/lib/database.types';
 
 type CompanySizeType = '대기업' | '중견' | '스타트업';
 
@@ -66,7 +67,50 @@ export function MeetingPrep() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
+  // AI 브리핑
+  const [briefLoading, setBriefLoading]   = useState(false);
+  const [brief, setBrief]                 = useState<MeetingBrief | null>(null);
+  const [briefError, setBriefError]       = useState('');
+  const [briefExpanded, setBriefExpanded] = useState<Record<string, boolean>>({});
+  const [crawlingSources, setCrawlingSources] = useState<string[]>([]);
+  const [lastCrawled, setLastCrawled]     = useState<string | null>(null);
+
   useEffect(() => { fetchAll(); }, []);
+
+  useEffect(() => {
+    setBrief(null);
+    setBriefError('');
+    setCrawlingSources([]);
+    setLastCrawled(null);
+  }, [activeMeetingId]);
+
+  async function generateBrief() {
+    if (!activeMeeting) return;
+    setBriefLoading(true);
+    setBriefError('');
+    setBrief(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-meeting-prep', {
+        body: {
+          company_name: activeMeeting.target_company,
+          pain_points: activeMeeting.pain_points ?? undefined,
+          meeting_purpose: `${activeMeeting.target_company} ${activeMeeting.meeting_date} 미팅`,
+        },
+      });
+      if (error) throw error;
+      setBrief(data.brief);
+      setCrawlingSources(data.crawling_sources ?? []);
+      setLastCrawled(data.last_crawled ?? null);
+    } catch (e) {
+      setBriefError('브리핑 생성 실패: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBriefLoading(false);
+    }
+  }
+
+  function toggleSection(key: string) {
+    setBriefExpanded(p => ({ ...p, [key]: !p[key] }));
+  }
 
   async function fetchAll() {
     setLoading(true);
@@ -449,6 +493,137 @@ export function MeetingPrep() {
                     <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-2.5 text-sm text-amber-800">
                       <span className="font-semibold text-amber-600 text-xs uppercase tracking-wide">예상 니즈 / 문제</span>
                       <p className="mt-1">{activeMeeting.pain_points}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* AI 브리핑 */}
+                <div className="bg-white rounded-xl border border-violet-100 shadow-sm overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-violet-50 to-indigo-50 border-b border-violet-100">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-violet-500" />
+                      <span className="text-sm font-bold text-violet-800">AI 회의 브리핑</span>
+                      {crawlingSources.length > 0 && (
+                        <div className="flex gap-1 ml-1">
+                          {crawlingSources.includes('website') && (
+                            <span className="px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded text-[10px] font-semibold">홈페이지</span>
+                          )}
+                          {crawlingSources.includes('career') && (
+                            <span className="px-1.5 py-0.5 bg-green-100 text-green-600 rounded text-[10px] font-semibold">채용공고</span>
+                          )}
+                          {crawlingSources.includes('news') && (
+                            <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded text-[10px] font-semibold">뉴스</span>
+                          )}
+                        </div>
+                      )}
+                      {lastCrawled && (
+                        <span className="text-[10px] text-gray-400 ml-1">
+                          마지막 수집: {new Date(lastCrawled).toLocaleDateString('ko-KR')}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={generateBrief}
+                      disabled={briefLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white rounded-lg text-xs font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50"
+                    >
+                      {briefLoading
+                        ? <><span className="w-3 h-3 border border-white/40 border-t-white rounded-full animate-spin" />생성 중…</>
+                        : <><RefreshCw className="w-3 h-3" />{brief ? '재생성' : '브리핑 생성'}</>
+                      }
+                    </button>
+                  </div>
+
+                  {briefError && (
+                    <div className="px-5 py-3 bg-red-50 text-xs text-red-600">{briefError}</div>
+                  )}
+
+                  {!brief && !briefLoading && !briefError && (
+                    <div className="px-5 py-6 text-center text-sm text-gray-400">
+                      버튼을 눌러 AI가 크롤링 데이터 + 영업 이력을 분석한 회의 브리핑을 생성하세요
+                    </div>
+                  )}
+
+                  {brief && (
+                    <div className="divide-y divide-gray-50">
+                      {([
+                        { key: 'company_overview',      label: '기업 현황',          color: 'text-gray-700',   bg: 'bg-gray-50'    },
+                        { key: 'it_investment_signals', label: 'IT 투자 신호',        color: 'text-blue-700',   bg: 'bg-blue-50'    },
+                        { key: 'hiring_trends',         label: '채용 트렌드',         color: 'text-green-700',  bg: 'bg-green-50'   },
+                        { key: 'recent_news',           label: '최근 뉴스/이슈',      color: 'text-orange-700', bg: 'bg-orange-50'  },
+                        { key: 'sales_strategy',        label: '영업 전략',           color: 'text-indigo-700', bg: 'bg-indigo-50'  },
+                        { key: 'risk_factors',          label: '주의사항',            color: 'text-red-700',    bg: 'bg-red-50'     },
+                      ] as const).map(({ key, label, color, bg }) => (
+                        <div key={key}>
+                          <button
+                            onClick={() => toggleSection(key)}
+                            className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
+                          >
+                            <span className={`text-xs font-bold uppercase tracking-wide ${color}`}>{label}</span>
+                            {briefExpanded[key]
+                              ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                              : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                            }
+                          </button>
+                          {briefExpanded[key] && (
+                            <div className={`px-5 pb-4 ${bg} mx-3 mb-2 rounded-lg`}>
+                              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line pt-3">
+                                {brief[key as keyof typeof brief] as string}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* 아젠다 */}
+                      <div>
+                        <button
+                          onClick={() => toggleSection('agenda')}
+                          className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
+                        >
+                          <span className="text-xs font-bold uppercase tracking-wide text-violet-700">추천 아젠다</span>
+                          {briefExpanded['agenda']
+                            ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                            : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                          }
+                        </button>
+                        {briefExpanded['agenda'] && (
+                          <div className="px-5 pb-4">
+                            <ol className="space-y-1.5">
+                              {brief.agenda.map((item, i) => (
+                                <li key={i} className="flex gap-2.5 text-sm text-gray-700">
+                                  <span className="shrink-0 w-5 h-5 bg-violet-100 text-violet-600 rounded-full text-[11px] font-bold flex items-center justify-center">{i + 1}</span>
+                                  {item}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 예상 질문 */}
+                      <div>
+                        <button
+                          onClick={() => toggleSection('questions')}
+                          className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors"
+                        >
+                          <span className="text-xs font-bold uppercase tracking-wide text-teal-700">예상 질문</span>
+                          {briefExpanded['questions']
+                            ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                            : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                          }
+                        </button>
+                        {briefExpanded['questions'] && (
+                          <div className="px-5 pb-4 space-y-2">
+                            {brief.suggested_questions.map((q, i) => (
+                              <div key={i} className="flex gap-2 bg-teal-50 rounded-lg px-3 py-2.5">
+                                <span className="shrink-0 text-[10px] font-bold text-teal-500 mt-0.5">Q{i + 1}</span>
+                                <p className="text-sm text-teal-800">{q}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

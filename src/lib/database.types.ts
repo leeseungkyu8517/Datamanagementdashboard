@@ -183,7 +183,33 @@ export interface CompanyDataCrawling {
   url: string
   collected_at: string
   keywords: string[] | null
+  source_type: 'website' | 'career' | 'news'
+  title: string | null
+  raw_content: string | null
   created_at: string
+}
+
+export interface BrycenKeyword {
+  id: string
+  keyword: string
+  created_at: string
+}
+
+export interface DiscoveredCompany {
+  name: string
+  industry: string | null
+  reason: string
+}
+
+export interface MeetingBrief {
+  company_overview: string
+  it_investment_signals: string
+  hiring_trends: string
+  recent_news: string
+  sales_strategy: string
+  agenda: string[]
+  suggested_questions: string[]
+  risk_factors: string
 }
 
 export interface Database {
@@ -202,6 +228,7 @@ export interface Database {
       company_data: { Row: CompanyData; Insert: Omit<CompanyData, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Omit<CompanyData, 'id'>> }
       company_data_crawling: { Row: CompanyDataCrawling; Insert: Omit<CompanyDataCrawling, 'id' | 'created_at'>; Update: Partial<Omit<CompanyDataCrawling, 'id'>> }
       documents: { Row: SalesDocument; Insert: Omit<SalesDocument, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Omit<SalesDocument, 'id'>> }
+      brycen_keywords: { Row: BrycenKeyword; Insert: Omit<BrycenKeyword, 'id' | 'created_at'>; Update: Partial<Omit<BrycenKeyword, 'id'>> }
     }
   }
 }
