@@ -2,9 +2,42 @@ import { useState, useEffect } from 'react';
 import { Search, Plus, ChevronDown, Calendar, Edit2, Trash2, X, Brain } from 'lucide-react';
 import { AiButton } from '@/app/components/ai-button';
 import { supabase } from '@/lib/supabase';
-import type { SalesProject, MeetingNote, Company, SalesPersonnel, SalesStage, RegionType } from '@/lib/database.types';
+import type { SalesProject, MeetingNote, Company, SalesPersonnel, SalesStage, RegionType, IssueGrade } from '@/lib/database.types';
 
 const STAGES: SalesStage[] = ['미팅 요청', '미팅 진행', '견적서 발송', '가격 협의', '계약 진행'];
+
+const ISSUE_GRADES: IssueGrade[] = ['S', 'A', 'B', 'C', 'D', 'E'];
+
+const ISSUE_GRADE_META: Record<IssueGrade, { label: string; color: string; prob: string }> = {
+  S: { label: 'S',  color: 'bg-emerald-500 text-white border-emerald-600', prob: '100%' },
+  A: { label: 'A',  color: 'bg-violet-500 text-white border-violet-600',   prob: '80%'  },
+  B: { label: 'B',  color: 'bg-blue-500 text-white border-blue-600',       prob: '50%'  },
+  C: { label: 'C',  color: 'bg-amber-400 text-white border-amber-500',     prob: '30%'  },
+  D: { label: 'D',  color: 'bg-gray-400 text-white border-gray-500',       prob: '0%'   },
+  E: { label: 'E',  color: 'bg-red-400 text-white border-red-500',         prob: '0%'   },
+};
+
+const ISSUE_GRADE_DESC: Record<IssueGrade, string> = {
+  S: '계약 완료 · 발주서 수령 · 입금 확인',
+  A: '도입 확정 · 세부 계약 조건 조율 (1~2주 내 매출 예상)',
+  B: '2회 이상 심층 미팅 · Pain Point 파악 · 예산 확인 · 도입 의지 확고',
+  C: '공식 제안서 발송 · 견적서 제출 · 1차 데모/미팅 진행',
+  D: '미팅 후 예산 無 · 연락 보류 · 후속 조치 없음',
+  E: '단순 리스트 · cold call 거절 · 기피 업체',
+};
+
+function IssueGradeBadge({ grade }: { grade: IssueGrade | null }) {
+  if (!grade) return null;
+  const meta = ISSUE_GRADE_META[grade];
+  return (
+    <span
+      className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-extrabold border ${meta.color}`}
+      title={`${grade} (${meta.prob}) — ${ISSUE_GRADE_DESC[grade]}`}
+    >
+      {grade}
+    </span>
+  );
+}
 
 function getStageColor(stage: SalesStage) {
   switch (stage) {
@@ -165,6 +198,7 @@ export function SalesHistory() {
       sales_personnel_id: personnelId || null,
       manager_name: person?.name ?? null,
       region: (fd.get('region') as RegionType) || null,
+      issue_grade: (fd.get('issue_grade') as IssueGrade) || null,
     };
 
     if (editingProject) {
@@ -373,7 +407,10 @@ export function SalesHistory() {
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
-                        <h3 className="text-base font-bold text-gray-900 mb-1">{project.project_name}</h3>
+                        <div className="flex items-center gap-2 mb-1">
+                          <IssueGradeBadge grade={project.issue_grade} />
+                          <h3 className="text-base font-bold text-gray-900">{project.project_name}</h3>
+                        </div>
                         <div className="flex items-center gap-3 text-sm text-gray-600 mb-2">
                           <span>{project.company_name}</span>
                           {project.business_number && <><span className="text-gray-400">•</span><span>{project.business_number}</span></>}
@@ -668,6 +705,34 @@ export function SalesHistory() {
                     <option value="vietnam">베트남</option>
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">안건 등급</label>
+                <div className="grid grid-cols-6 gap-2">
+                  {ISSUE_GRADES.map(g => {
+                    const meta = ISSUE_GRADE_META[g];
+                    return (
+                      <label key={g} className="cursor-pointer">
+                        <input type="radio" name="issue_grade" value={g}
+                          defaultChecked={editingProject?.issue_grade === g}
+                          className="sr-only peer" />
+                        <div className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg border-2 text-center transition-all
+                          peer-checked:border-current peer-checked:shadow-sm border-gray-200 hover:border-gray-300
+                          ${editingProject?.issue_grade === g ? `${meta.color} border-current` : 'bg-white text-gray-600'}`}>
+                          <span className="text-sm font-extrabold">{g}</span>
+                          <span className="text-[10px] font-medium">{meta.prob}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="mt-1.5 text-xs text-gray-400">
+                  {editingProject?.issue_grade ? ISSUE_GRADE_DESC[editingProject.issue_grade] : '등급을 선택하면 설명이 표시됩니다'}
+                </p>
+                <label className="flex items-center gap-1.5 mt-1 text-xs text-gray-500 cursor-pointer">
+                  <input type="radio" name="issue_grade" value="" defaultChecked={!editingProject?.issue_grade} className="accent-gray-400" />
+                  등급 없음
+                </label>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">담당자</label>

@@ -1,4 +1,5 @@
 export type RegionType = 'korea' | 'japan' | 'vietnam'
+export type IssueGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'E'
 export type CompanyRank = number // 0~5: 5=S, 4=A, 3=B, 2=C, 1=D, 0=E
 export type CompanyStatus = '거래중' | '협의중' | '보류'
 export type SalesStage = '미팅 요청' | '미팅 진행' | '견적서 발송' | '가격 협의' | '계약 진행'
@@ -68,6 +69,7 @@ export interface SalesProject {
   sales_personnel_id: string | null
   manager_name: string | null
   region: RegionType | null
+  issue_grade: IssueGrade | null
   created_at: string
   updated_at: string
 }

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
-import { Search, Plus, Calendar, Tag, Trash2, Edit2, X, User, Phone, FileText, ExternalLink, Clock } from 'lucide-react';
+import { Search, Plus, Calendar, Tag, Trash2, Edit2, X, User, Phone, FileText, ExternalLink, Clock, MoreHorizontal } from 'lucide-react';
 import { AiButton } from '@/app/components/ai-button';
 import { supabase } from '@/lib/supabase';
 import type { Task, TaskHistory, TaskAttachment, TaskPriority, TaskStatus, Schedule } from '@/lib/database.types';
@@ -43,6 +43,9 @@ export function MyTasks() {
   const [saving, setSaving]                 = useState(false);
   const [draggingId, setDraggingId]         = useState<string | null>(null);
   const [dragOverCol, setDragOverCol]       = useState<string | null>(null);
+  const [dragPos, setDragPos]               = useState<{ x: number; y: number } | null>(null);
+  const dragOverColRef  = useRef<string | null>(null);
+  const columnRefs      = useRef<Record<string, HTMLDivElement | null>>({});
   const [taskTitle, setTaskTitle]           = useState('');
   const [taskDesc, setTaskDesc]             = useState('');
 
@@ -90,6 +93,47 @@ export function MyTasks() {
       setTasks(prev => prev.map(t => t.id === taskId ? data : t));
       if (selectedTask?.id === taskId) setSelectedTask(data);
     }
+  };
+
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>, task: Task) => {
+    if (e.button !== 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let active = false;
+
+    const onMove = (ev: PointerEvent) => {
+      if (!active) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) return;
+        active = true;
+        setDraggingId(task.id);
+      }
+      setDragPos({ x: ev.clientX, y: ev.clientY });
+      let found: string | null = null;
+      for (const [key, el] of Object.entries(columnRefs.current)) {
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
+          found = key; break;
+        }
+      }
+      dragOverColRef.current = found;
+      setDragOverCol(found);
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      if (active && dragOverColRef.current) {
+        updateStatus(task.id, dragOverColRef.current as TaskStatus);
+      }
+      setDraggingId(null);
+      setDragPos(null);
+      setDragOverCol(null);
+      dragOverColRef.current = null;
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   };
 
   const deleteTask = async (taskId: string) => {
@@ -174,13 +218,10 @@ export function MyTasks() {
     const tags = allTags[task.id] ?? [];
     return (
       <div
-        onClick={() => handleSelectTask(task)}
-        draggable
-        onDragStart={e => { e.stopPropagation(); setDraggingId(task.id); }}
-        onDragEnd={() => setDraggingId(null)}
-        className={`bg-white rounded-xl border border-gray-200 p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${draggingId === task.id ? 'opacity-40' : ''}`}>
+        onPointerDown={e => startDrag(e, task)}
+        className={`bg-white rounded-xl border border-gray-200 p-3 cursor-grab hover:shadow-md transition-shadow select-none ${draggingId === task.id ? 'ring-2 ring-blue-400' : ''}`}>
 
-        {/* 행1: 우선순위·뱃지 왼쪽 | 드롭다운 오른쪽 */}
+        {/* 행1: 우선순위·뱃지 + 상세보기 버튼 */}
         <div className="flex items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className={`text-xs px-2 py-0.5 rounded border font-medium ${getPriorityColor(task.priority)}`}>
@@ -189,15 +230,13 @@ export function MyTasks() {
             {isDueToday && <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200">D-Day</span>}
             {isOverdue  && <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-300">날짜 지연</span>}
           </div>
-          <select
-            value={task.status}
-            onClick={e => e.stopPropagation()}
-            onChange={e => { e.stopPropagation(); updateStatus(task.id, e.target.value as TaskStatus); }}
-            className="shrink-0 text-xs px-2 py-1 border border-gray-200 rounded-lg bg-white focus:outline-none text-gray-600">
-            <option value="todo">해야할일</option>
-            <option value="in_progress">진행 중</option>
-            <option value="completed">완료</option>
-          </select>
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); handleSelectTask(task); }}
+            className="p-1 hover:bg-gray-100 rounded transition-colors shrink-0"
+            title="상세보기">
+            <MoreHorizontal className="w-4 h-4 text-gray-400" />
+          </button>
         </div>
 
         {task.project_name && <div className="text-xs text-gray-400 mb-0.5 truncate">{task.project_name}</div>}
@@ -294,9 +333,7 @@ export function MyTasks() {
         <div className="flex-1 flex gap-4 overflow-hidden p-5 bg-[#f5f6fa]">
           {COLUMNS.map(col => (
             <div key={col.key}
-              onDragOver={e => { e.preventDefault(); setDragOverCol(col.key); }}
-              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null); }}
-              onDrop={e => { e.preventDefault(); if (draggingId) updateStatus(draggingId, col.key as TaskStatus); setDraggingId(null); setDragOverCol(null); }}
+              ref={el => { columnRefs.current[col.key] = el; }}
               className={`flex-1 flex flex-col rounded-xl border ${col.bg} overflow-hidden min-w-0 transition-all ${dragOverCol === col.key ? 'ring-2 ring-blue-400 scale-[1.01]' : ''}`}>
               <div className={`px-4 py-3 shrink-0 flex items-center justify-between ${col.hdr} rounded-t-xl`}>
                 <span className="text-sm font-bold">{col.label}</span>
@@ -312,6 +349,27 @@ export function MyTasks() {
           ))}
         </div>
       )}
+
+      {/* 드래그 고스트 */}
+      {draggingId && dragPos && (() => {
+        const t = tasks.find(x => x.id === draggingId);
+        if (!t) return null;
+        return (
+          <div
+            style={{ position: 'fixed', left: dragPos.x + 12, top: dragPos.y - 16, pointerEvents: 'none', zIndex: 9999, width: 220 }}
+            className="bg-white rounded-xl border-2 border-blue-400 shadow-2xl p-3 opacity-95 select-none">
+            <div className={`text-xs px-2 py-0.5 rounded border font-medium inline-block mb-1.5 ${getPriorityColor(t.priority)}`}>
+              {getPriorityLabel(t.priority)}
+            </div>
+            <div className="text-sm font-semibold text-gray-900 truncate">{t.title}</div>
+            {t.due_date && (
+              <div className={`flex items-center gap-0.5 text-xs mt-1 ${getDueDateColor(t.due_date)}`}>
+                <Calendar className="w-3 h-3" />{t.due_date}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 상세 팝업 */}
       {selectedTask && (
