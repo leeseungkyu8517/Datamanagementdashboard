@@ -69,6 +69,8 @@ export function CompanyDataCollection() {
   const [searchedKeywords, setSearchedKeywords] = useState<string[]>([]);
   const [newsCount, setNewsCount] = useState(0);
   const [sampleTitles, setSampleTitles] = useState<string[]>([]);
+  const [validationStep, setValidationStep] = useState<'idle' | 'validating' | 'done'>('idle');
+  const [validationResult, setValidationResult] = useState<{ dart: boolean; public: boolean } | null>(null);
 
   useEffect(() => { fetchCompanies(); }, []);
 
@@ -270,12 +272,31 @@ export function CompanyDataCollection() {
     }
   }
 
+  async function validateAndDiscover() {
+    setValidationStep('validating');
+    setValidationResult(null);
+    try {
+      const { data } = await supabase.functions.invoke('validate-api-keys', { body: {} });
+      setValidationResult({ dart: data?.dart ?? false, public: data?.public ?? false });
+    } catch {
+      setValidationResult({ dart: false, public: false });
+    }
+    setValidationStep('done');
+    await new Promise(r => setTimeout(r, 1500));
+    runCompanyDiscover();
+  }
+
   function openDiscoverModal() {
     setShowDiscoverModal(true);
     setDiscoveredCompanies([]);
     setDiscoverError('');
     setAddedCompanies(new Set());
-    runCompanyDiscover();
+    setSearchedKeywords([]);
+    setNewsCount(0);
+    setSampleTitles([]);
+    setValidationStep('idle');
+    setValidationResult(null);
+    validateAndDiscover();
   }
 
   async function addDiscoveredCompany(company: DiscoveredCompany) {
@@ -767,7 +788,35 @@ export function CompanyDataCollection() {
 
             {/* 본문 */}
             <div className="flex-1 overflow-y-auto px-6 py-4">
-              {discoverLoading ? (
+              {(validationStep === 'validating' || validationStep === 'done') && !discoverLoading && discoveredCompanies.length === 0 && !discoverError ? (
+                <div className="py-14 text-center">
+                  <p className="text-sm font-semibold text-gray-700 mb-5">API 키 검증</p>
+                  <div className="space-y-3 max-w-xs mx-auto text-left">
+                    {([
+                      { label: 'DART API (전자공시시스템)', key: 'dart' as const },
+                      { label: '공공데이터 API (국민연금)', key: 'public' as const },
+                    ] as const).map(({ label, key }) => (
+                      <div key={key} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <span className="text-sm text-gray-700">{label}</span>
+                        {validationStep === 'validating' ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                        ) : validationResult?.[key] ? (
+                          <CheckCircle className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <AlertTriangle className="w-4 h-4 text-amber-500" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {validationStep === 'done' && (
+                    <p className="text-xs text-gray-400 mt-4">
+                      {validationResult?.dart && validationResult?.public
+                        ? '검증 완료 — 기업 크롤링을 시작합니다...'
+                        : 'API 키 일부 검증 실패 — 크롤링을 계속 진행합니다...'}
+                    </p>
+                  )}
+                </div>
+              ) : discoverLoading ? (
                 <div className="py-16 text-center">
                   <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-violet-500" />
                   <p className="text-sm font-medium text-gray-700">구글 뉴스 검색 중...</p>

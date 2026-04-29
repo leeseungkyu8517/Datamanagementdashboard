@@ -5,7 +5,16 @@
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <title>Data Management Dashboard</title>
-      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
+      <style>
+      html, body { height: 100%; margin: 0; }
+      #root { height: 100%; }
+      iframe.goog-te-banner-frame,
+      .goog-te-banner-frame.skiptranslate { display: none !important; }
+      body { top: 0px !important; }
+      #goog-gt-tt { display: none !important; }
+      .goog-text-highlight { background-color: transparent !important; box-shadow: none !important; }
+      .VIpgJd-ZVi9od-aZ2wEe-wOHMyf { display: none !important; }
+    </style>
     </head>
 
     <body>
@@ -17,6 +26,7 @@
           new google.translate.TranslateElement({
             pageLanguage: 'ko',
             includedLanguages: 'ja',
+            autoDisplay: false,
           }, 'google_translate_element');
         }
       </script>

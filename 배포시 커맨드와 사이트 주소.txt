@@ -1,4 +1,4 @@
 배포 페이지 : https://datamanagementdashboard.vercel.app/my-tasks
 
  앞으로 코드 수정하고 배포하고 싶을 때는 터미널에서:
-  npx vercel deploy --prod
+  npx vercel@latest deploy --prod --cwd "C:\Users\lsg85\IdeaProjects\Datamanagementdashboard"
