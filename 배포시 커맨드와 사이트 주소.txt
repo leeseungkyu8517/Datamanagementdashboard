@@ -1,4 +1,23 @@
+[외부]
 배포 페이지 : https://datamanagementdashboard.vercel.app/my-tasks
 
  앞으로 코드 수정하고 배포하고 싶을 때는 터미널에서:
+  npx vercel@latest deploy --prod --cwd "C:\Users\lsg85\IdeaProjects\Datamanagementdashboard"
+
+[로컬]
+  로컬 개발 서버 실행 명령어:
+
+  npx vite --host --cwd "C:\Users\lsg85\IdeaProjects\Datamanagementdashboard"
+
+  또는 프로젝트 폴더 안에서 직접:
+  cd C:\Users\lsg85\IdeaProjects\Datamanagementdashboard
+  npm run dev
+
+  브라우저에서 http://localhost:5173 으로 접속하면 됩니다.
+
+  Supabase 함수 배포 (변경된 함수 적용 시):
+  npx supabase functions deploy ai-company-discover --project-ref <프로젝트_ref>
+  npx supabase functions deploy validate-api-keys --project-ref <프로젝트_ref>
+
+  Vercel 프론트엔드 배포:
   npx vercel@latest deploy --prod --cwd "C:\Users\lsg85\IdeaProjects\Datamanagementdashboard"

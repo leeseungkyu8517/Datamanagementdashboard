@@ -111,6 +111,50 @@ function isCompanyName(name: string): boolean {
   return COMPANY_SUFFIXES.some(sfx => name.endsWith(sfx));
 }
 
+// ── DART API 존재 확인 ────────────────────────────────────────────────────
+async function checkDartExists(name: string, dartKey: string): Promise<boolean> {
+  if (!dartKey) return false;
+  try {
+    const today = new Date();
+    const endDe   = today.toISOString().slice(0, 10).replace(/-/g, "");
+    const startDe = `${today.getFullYear() - 3}0101`;
+    const url = `https://opendart.fss.or.kr/api/list.json?crtfc_key=${dartKey}&corp_name=${encodeURIComponent(name)}&bgn_de=${startDe}&end_de=${endDe}&page_count=5`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    if (!res.ok) return false;
+    const data = await res.json() as { status: string; list?: Array<{ corp_name: string }> };
+    if (data.status !== "000" || !data.list?.length) return false;
+    return data.list.some(c => {
+      const n = c.corp_name.replace(/\(주\)|주식회사|\(유\)/g, "").trim();
+      return n === name || n.includes(name) || name.includes(n);
+    });
+  } catch {
+    return false;
+  }
+}
+
+// ── 공공데이터 API 존재 확인 ──────────────────────────────────────────────
+async function checkPublicExists(name: string, pubKey: string): Promise<boolean> {
+  if (!pubKey) return false;
+  try {
+    const url = new URL("https://api.odcloud.kr/api/15083277/v1/uddi:c70b85ac-0146-41a9-8f4a-d2acafaa3c92");
+    url.searchParams.set("serviceKey", pubKey);
+    url.searchParams.set("page", "1");
+    url.searchParams.set("perPage", "5");
+    url.searchParams.set("returnType", "json");
+    url.searchParams.set("cond[사업장명::LIKE]", name);
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8_000) });
+    if (!res.ok) return false;
+    const data = await res.json() as { data?: Array<{ 사업장명: string }> };
+    if (!Array.isArray(data.data) || !data.data.length) return false;
+    return data.data.some(c => {
+      const n = c.사업장명.replace(/\(주\)|주식회사|\(유\)/g, "").trim();
+      return n === name || n.includes(name) || name.includes(n);
+    });
+  } catch {
+    return false;
+  }
+}
+
 // ── Rule-based 기업명 추출 ────────────────────────────────────────────────
 function extractCompaniesFromText(
   articles: { title: string; body: string; keyword: string }[],
@@ -287,7 +331,34 @@ Deno.serve(async (req) => {
     }
 
     // 6. 기존 기업 재필터
-    companies = companies.filter(c => !existingNames.has(c.name.trim())).slice(0, 10);
+    companies = companies.filter(c => !existingNames.has(c.name.trim())).slice(0, 20);
+
+    // 7. DART + 공공데이터 API 교차 검증 — 두 API 모두 존재하는 기업만 포함
+    const dartKey = Deno.env.get("DART_API_KEY") ?? "";
+    const pubKey  = Deno.env.get("PUBLIC_DATA_API_KEY") ?? "";
+
+    if (dartKey || pubKey) {
+      const checks = await Promise.allSettled(
+        companies.map(async c => {
+          const [dartOk, pubOk] = await Promise.all([
+            checkDartExists(c.name, dartKey),
+            checkPublicExists(c.name, pubKey),
+          ]);
+          return { company: c, dartOk, pubOk };
+        }),
+      );
+
+      companies = checks
+        .filter(r => r.status === "fulfilled" && (r.value.dartOk || r.value.pubOk))
+        .map(r => {
+          const { company, dartOk, pubOk } = (r as PromiseFulfilledResult<{ company: DiscoveredCompany; dartOk: boolean; pubOk: boolean }>).value;
+          const tag = dartOk && pubOk ? "DART·공공데이터 검증" : dartOk ? "DART 검증" : "공공데이터 검증";
+          return { ...company, reason: `${company.reason} (${tag} 완료)` };
+        })
+        .slice(0, 10);
+    } else {
+      companies = companies.slice(0, 10);
+    }
 
     return json({
       success: true,
