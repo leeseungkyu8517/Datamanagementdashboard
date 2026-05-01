@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Search, Plus, X, BookmarkPlus, BookmarkCheck, ExternalLink, Edit2, Trash2, Calendar, FileText, AlertCircle, Sparkles, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, Plus, X, BookmarkPlus, BookmarkCheck, ExternalLink, Edit2, Trash2, Calendar, FileText, AlertCircle, Sparkles, RefreshCw, ChevronDown, ChevronUp, Bot } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { MeetingBrief } from '@/lib/database.types';
 
@@ -66,6 +66,26 @@ export function MeetingPrep() {
   const [saving, setSaving]   = useState(false);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
+
+  // 아코디언
+  const [openCompanies, setOpenCompanies] = useState<Set<string>>(new Set());
+
+  // AI 수집
+  const [showCollectModal, setShowCollectModal] = useState(false);
+  const [collectCompany, setCollectCompany]     = useState('');
+  const [collectLoading, setCollectLoading]     = useState(false);
+  const [collectResult, setCollectResult]       = useState<{ ok: boolean; msg: string } | null>(null);
+  const [collectKeywords, setCollectKeywords]   = useState(['DX 사례', '솔루션 도입']);
+  const [keywordInput, setKeywordInput]         = useState('');
+  const [collectMode, setCollectMode]           = useState<'direct' | 'list'>('direct');
+  const [cdCompanies, setCdCompanies]           = useState<{ id: string; name: string; industry: string | null }[]>([]);
+  const [cdSearch, setCdSearch]                 = useState('');
+  const [cdLoading, setCdLoading]               = useState(false);
+
+  // 원인 AI
+  const [problemValue, setProblemValue]     = useState('');
+  const [predictingProblem, setPredictingProblem] = useState(false);
+  const caseFormRef = useRef<HTMLFormElement>(null);
 
   // AI 브리핑
   const [briefLoading, setBriefLoading]   = useState(false);
@@ -184,6 +204,72 @@ export function MeetingPrep() {
     setSaving(false); setShowCaseModal(false); setEditingCase(null);
   }
 
+  async function loadCdCompanies() {
+    setCdLoading(true);
+    const { data } = await supabase.from('company_data').select('id, name, industry').order('name');
+    setCdCompanies(data ?? []);
+    setCdLoading(false);
+  }
+
+  function openCollectModal() {
+    setCollectResult(null);
+    setCollectCompany('');
+    setCdSearch('');
+    setCollectMode('direct');
+    setShowCollectModal(true);
+    loadCdCompanies();
+  }
+
+  function addKeyword() {
+    const kw = keywordInput.trim();
+    if (kw && !collectKeywords.includes(kw)) {
+      setCollectKeywords(p => [...p, kw]);
+    }
+    setKeywordInput('');
+  }
+
+  async function handleCollect(e: React.FormEvent) {
+    e.preventDefault();
+    if (!collectCompany.trim()) return;
+    setCollectLoading(true);
+    setCollectResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('naver-case-collect', {
+        body: { company_name: collectCompany.trim(), keywords: collectKeywords },
+      });
+      if (error) throw error;
+      setCollectResult({ ok: true, msg: data.message ?? `${data.inserted}개 사례 추가 완료` });
+      if ((data.inserted ?? 0) > 0) await fetchAll();
+    } catch (e) {
+      setCollectResult({ ok: false, msg: '수집 실패: ' + (e instanceof Error ? e.message : String(e)) });
+    } finally {
+      setCollectLoading(false);
+    }
+  }
+
+  async function handlePredictProblem() {
+    if (!caseFormRef.current) return;
+    const fd = new FormData(caseFormRef.current);
+    setPredictingProblem(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('predict-problem', {
+        body: {
+          company_name: fd.get('company_name') as string,
+          industry:     fd.get('industry') as string,
+          solution:     fd.get('solution') as string,
+          result:       fd.get('result') as string,
+          tags:         fd.get('tags') as string,
+        },
+      });
+      if (error) throw error;
+      if (data?.problem) setProblemValue(data.problem);
+    } catch (e) {
+      console.error('원인 AI 예측 실패:', e);
+    } finally {
+      setPredictingProblem(false);
+    }
+  }
+
   async function handleDeleteCase(id: string) {
     if (!window.confirm('사례를 삭제하시겠습니까?')) return;
     await supabase.from('cases').delete().eq('id', id);
@@ -230,12 +316,6 @@ export function MeetingPrep() {
   }
 
   // ── Loading / Error ──────────────────────────────────────────────────
-  if (loading) return (
-    <div className="flex h-full items-center justify-center">
-      <div className="w-8 h-8 rounded-full border-2 border-gray-200 border-t-indigo-400 animate-spin" />
-    </div>
-  );
-
   if (dbError) return (
     <div className="flex h-full items-center justify-center flex-col gap-3 text-center px-8">
       <AlertCircle className="w-10 h-10 text-amber-400" />
@@ -305,19 +385,39 @@ export function MeetingPrep() {
                 </button>
               ))}
             </div>
-            <button onClick={() => { setEditingCase(null); setShowCaseModal(true); }}
-              className="ml-auto flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-              <Plus className="w-4 h-4" />사례 추가
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={openCollectModal}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
+                <Bot className="w-4 h-4" />AI 수집
+              </button>
+              <button onClick={() => { setEditingCase(null); setProblemValue(''); setShowCaseModal(true); }}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                <Plus className="w-4 h-4" />사례 추가
+              </button>
+            </div>
           </div>
 
           {/* Case grid */}
-          {filteredCases.length === 0 ? (
+          {loading ? (
+            <div className="grid grid-cols-2 gap-4">
+              {[1,2,3,4].map(i => (
+                <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 h-44 animate-pulse">
+                  <div className="h-4 bg-gray-100 rounded mb-2 w-2/3" />
+                  <div className="h-3 bg-gray-100 rounded mb-4 w-1/3" />
+                  <div className="space-y-2">
+                    <div className="h-3 bg-gray-100 rounded w-full" />
+                    <div className="h-3 bg-gray-100 rounded w-5/6" />
+                    <div className="h-3 bg-gray-100 rounded w-4/5" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredCases.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <FileText className="w-10 h-10 text-gray-300" />
               <p className="text-sm text-gray-400">{cases.length === 0 ? '등록된 사례가 없습니다' : '검색 결과가 없습니다'}</p>
               {cases.length === 0 && (
-                <button onClick={() => { setEditingCase(null); setShowCaseModal(true); }}
+                <button onClick={() => { setEditingCase(null); setProblemValue(''); setShowCaseModal(true); }}
                   className="mt-1 text-sm text-indigo-500 hover:underline">
                   첫 번째 사례 추가하기
                 </button>
@@ -352,7 +452,7 @@ export function MeetingPrep() {
                           <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
                         </a>
                       )}
-                      <button onClick={() => { setEditingCase(c); setShowCaseModal(true); }}
+                      <button onClick={() => { setEditingCase(c); setProblemValue(c.problem ?? ''); setShowCaseModal(true); }}
                         className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors">
                         <Edit2 className="w-3.5 h-3.5 text-blue-500" />
                       </button>
@@ -763,15 +863,15 @@ export function MeetingPrep() {
       {/* ── Case Modal ───────────────────────────────────────────────── */}
       {showCaseModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
-          onClick={() => { setShowCaseModal(false); setEditingCase(null); }}>
+          onClick={() => { setShowCaseModal(false); setEditingCase(null); setProblemValue(''); }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white">
               <h3 className="text-base font-bold text-gray-900">{editingCase ? '사례 수정' : '새 사례 등록'}</h3>
-              <button onClick={() => { setShowCaseModal(false); setEditingCase(null); }}
+              <button onClick={() => { setShowCaseModal(false); setEditingCase(null); setProblemValue(''); }}
                 className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
             </div>
-            <form onSubmit={handleSaveCase} className="px-6 py-4 space-y-4">
+            <form ref={caseFormRef} onSubmit={handleSaveCase} className="px-6 py-4 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">레퍼런스 기업명 *</label>
@@ -802,8 +902,18 @@ export function MeetingPrep() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">어떤 문제가 있었나</label>
-                <textarea name="problem" rows={2} defaultValue={editingCase?.problem ?? ''}
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-gray-600">원인 AI</label>
+                  <button type="button" onClick={handlePredictProblem} disabled={predictingProblem}
+                    className="flex items-center gap-1 px-2 py-1 bg-violet-50 text-violet-600 border border-violet-200 rounded-lg text-xs font-medium hover:bg-violet-100 disabled:opacity-50 transition-colors">
+                    {predictingProblem
+                      ? <><span className="w-3 h-3 border border-violet-400/40 border-t-violet-500 rounded-full animate-spin inline-block" />예측 중…</>
+                      : <><Sparkles className="w-3 h-3" />AI 예측</>
+                    }
+                  </button>
+                </div>
+                <textarea name="problem" rows={2} value={problemValue} onChange={e => setProblemValue(e.target.value)}
+                  placeholder="AI 예측 버튼을 눌러 자동 분석하거나 직접 입력하세요"
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
               </div>
               <div>
@@ -832,11 +942,166 @@ export function MeetingPrep() {
                 </div>
               </div>
               <div className="flex gap-3 pt-2 border-t border-gray-100">
-                <button type="button" onClick={() => { setShowCaseModal(false); setEditingCase(null); }}
+                <button type="button" onClick={() => { setShowCaseModal(false); setEditingCase(null); setProblemValue(''); }}
                   className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">취소</button>
                 <button type="submit" disabled={saving}
                   className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
                   {saving ? '저장 중…' : '저장'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── AI 수집 Modal ───────────────────────────────────────────── */}
+      {showCollectModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowCollectModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <Bot className="w-4 h-4 text-emerald-600" />
+                <h3 className="text-base font-bold text-gray-900">AI 레퍼런스 수집</h3>
+              </div>
+              <button onClick={() => setShowCollectModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
+            </div>
+
+            <form onSubmit={handleCollect} className="flex flex-col flex-1 overflow-hidden">
+              <div className="px-6 py-4 space-y-5 overflow-y-auto flex-1">
+
+                {/* ── 1. 기업 선택 ── */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-semibold text-gray-600">기업 선택 *</label>
+                    <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                      {(['direct', 'list'] as const).map(m => (
+                        <button key={m} type="button"
+                          onClick={() => setCollectMode(m)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                            collectMode === m ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                          }`}>
+                          {m === 'direct' ? '직접 입력' : '기업 정보 수집'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {collectMode === 'direct' ? (
+                    <input
+                      value={collectCompany}
+                      onChange={e => setCollectCompany(e.target.value)}
+                      placeholder="예: 삼성전자, LG화학"
+                      required={collectMode === 'direct'}
+                      autoFocus
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                    />
+                  ) : (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="relative border-b border-gray-100">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                        <input
+                          value={cdSearch}
+                          onChange={e => setCdSearch(e.target.value)}
+                          placeholder="기업명 검색…"
+                          className="w-full pl-8 pr-3 py-2 text-sm focus:outline-none"
+                        />
+                      </div>
+                      <div className="max-h-40 overflow-y-auto">
+                        {cdLoading ? (
+                          <div className="py-4 text-center text-xs text-gray-400">불러오는 중…</div>
+                        ) : cdCompanies
+                            .filter(c => !cdSearch || c.name.toLowerCase().includes(cdSearch.toLowerCase()))
+                            .length === 0 ? (
+                          <div className="py-4 text-center text-xs text-gray-400">기업이 없습니다</div>
+                        ) : (
+                          cdCompanies
+                            .filter(c => !cdSearch || c.name.toLowerCase().includes(cdSearch.toLowerCase()))
+                            .map(c => (
+                              <button key={c.id} type="button"
+                                onClick={() => { setCollectCompany(c.name); }}
+                                className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${
+                                  collectCompany === c.name ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'text-gray-700'
+                                }`}>
+                                <span>{c.name}</span>
+                                {c.industry && <span className="text-xs text-gray-400">{c.industry}</span>}
+                              </button>
+                            ))
+                        )}
+                      </div>
+                      {collectCompany && (
+                        <div className="px-3 py-2 bg-emerald-50 border-t border-emerald-100 text-xs text-emerald-700 font-medium">
+                          선택됨: {collectCompany}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── 2. 검색 키워드 ── */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-2">검색 키워드</label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {collectKeywords.map(kw => (
+                      <span key={kw}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-xs font-medium">
+                        {kw}
+                        <button type="button"
+                          onClick={() => setCollectKeywords(p => p.filter(k => k !== kw))}
+                          className="hover:text-red-500 transition-colors ml-0.5">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    {collectKeywords.length === 0 && (
+                      <span className="text-xs text-red-400">키워드를 하나 이상 추가해주세요</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={keywordInput}
+                      onChange={e => setKeywordInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addKeyword(); } }}
+                      placeholder="키워드 입력 후 Enter 또는 추가"
+                      className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                    />
+                    <button type="button" onClick={addKeyword}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors">
+                      추가
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-gray-400">
+                    "{collectCompany || '기업명'} <span className="text-emerald-500">키워드</span>" 조합으로 네이버 뉴스를 검색합니다
+                  </p>
+                </div>
+
+                {/* ── 결과 ── */}
+                {collectResult && (
+                  <div className={`rounded-lg px-4 py-3 text-sm ${
+                    collectResult.ok
+                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                      : 'bg-red-50 border border-red-200 text-red-600'
+                  }`}>
+                    {collectResult.msg}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
+                <button type="button" onClick={() => setShowCollectModal(false)}
+                  className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">닫기</button>
+                <button type="submit"
+                  disabled={collectLoading || !collectCompany.trim() || collectKeywords.length === 0}
+                  className="flex-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                  {collectLoading
+                    ? <><span className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />수집 중…</>
+                    : '수집 시작'
+                  }
                 </button>
               </div>
             </form>

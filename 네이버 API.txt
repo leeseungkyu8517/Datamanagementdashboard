@@ -1,0 +1,4 @@
+[네이버 어플리케이션 API]
+Client ID tsri0bUR1MSThfqSWQd_
+
+Client Secret olPTGBS1Zu
