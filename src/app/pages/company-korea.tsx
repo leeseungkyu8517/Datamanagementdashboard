@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, ChevronDown, ChevronUp, Plus, Phone, Mail, ChevronLeft, ChevronRight, Edit2, Trash2, X } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, Plus, Phone, Mail, ChevronLeft, ChevronRight, Edit2, Trash2, X, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Company, CompanyManager, CompanyRank, CompanyStatus } from '@/lib/database.types';
 
@@ -48,10 +48,29 @@ export function CompanyKorea() {
   const [editingManager, setEditingManager] = useState<CompanyManager | null>(null);
   const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dartLoading, setDartLoading] = useState(false);
+  const [dartCandidates, setDartCandidates] = useState<{ corp_code: string; corp_name: string }[]>([]);
+
+  // 모달 폼 controlled 상태 (DART 자동완성용)
+  const [formName, setFormName] = useState('');
+  const [formBusinessNumber, setFormBusinessNumber] = useState('');
+  const [formCeo, setFormCeo] = useState('');
+  const [formIndustry, setFormIndustry] = useState('');
+  const [formAddress, setFormAddress] = useState('');
 
   useEffect(() => {
     fetchCompanies();
   }, []);
+
+  useEffect(() => {
+    if (showCompanyModal) {
+      setFormName(editingCompany?.name ?? '');
+      setFormBusinessNumber(editingCompany?.business_number ?? '');
+      setFormCeo(editingCompany?.ceo ?? '');
+      setFormIndustry(editingCompany?.industry ?? '');
+      setFormAddress(editingCompany?.address ?? '');
+    }
+  }, [showCompanyModal]);
 
   async function fetchCompanies() {
     setLoading(true);
@@ -113,6 +132,45 @@ export function CompanyKorea() {
       ...prev,
       [companyId]: (prev[companyId] ?? []).filter(m => m.id !== managerId),
     }));
+  };
+
+  const applyDartResult = (data: { matched_name?: string; ceo_nm?: string | null; adres?: string | null; bizr_no?: string | null; induty_code?: string | null }) => {
+    if (data.bizr_no)     setFormBusinessNumber(data.bizr_no);
+    if (data.ceo_nm)      setFormCeo(data.ceo_nm);
+    if (data.induty_code) setFormIndustry(data.induty_code);
+    if (data.adres)       setFormAddress(data.adres);
+    setDartCandidates([]);
+  };
+
+  const handleDartLookup = async (overrideCorpCode?: string) => {
+    if (!overrideCorpCode && !formName.trim()) { alert('기업명을 먼저 입력하세요.'); return; }
+    setDartLoading(true);
+    setDartCandidates([]);
+    try {
+      const body = overrideCorpCode
+        ? { corp_code: overrideCorpCode }
+        : { corp_name: formName.trim() };
+
+      const { data, error } = await supabase.functions.invoke('dart-company-info', { body });
+      if (error) throw error;
+
+      if (data.status === 'found') {
+        applyDartResult(data);
+        if (data.matched_name && data.matched_name !== formName.trim()) {
+          alert(`"${data.matched_name}"으로 조회되었습니다. 내용을 확인해 주세요.`);
+        }
+      } else if (data.status === 'candidates') {
+        setDartCandidates(data.candidates ?? []);
+      } else if (data.status === 'not_found') {
+        alert('관련 기업명이 없습니다.');
+      } else {
+        alert(data.message ?? 'DART 조회 중 오류가 발생했습니다.');
+      }
+    } catch (err) {
+      alert(`DART 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDartLoading(false);
+    }
   };
 
   const handleSaveCompany = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -447,10 +505,45 @@ export function CompanyKorea() {
               </button>
             </div>
             <form onSubmit={handleSaveCompany} className="p-6 space-y-4">
+              {/* DART 자동완성 안내 */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+                <span className="font-semibold">DART 자동완성</span>
+                <span className="text-blue-500">기업명 입력 후 "DART 조회" 버튼을 누르면 사업자번호·대표자·업종·주소가 자동 입력됩니다.</span>
+              </div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="col-span-2">
                   <label className="block text-sm text-gray-700 mb-1">기업명 *</label>
-                  <input name="name" type="text" defaultValue={editingCompany?.name} required className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <div className="flex gap-2">
+                    <input name="name" type="text" value={formName}
+                      onChange={e => { setFormName(e.target.value); setDartCandidates([]); }}
+                      required
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <button type="button" onClick={() => handleDartLookup()} disabled={dartLoading}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap">
+                      {dartLoading ? <><Loader2 className="w-4 h-4 animate-spin" />조회 중...</> : 'DART 조회'}
+                    </button>
+                  </div>
+                  {/* 후보 기업 선택 목록 */}
+                  {dartCandidates.length > 0 && (
+                    <div className="mt-2 border border-amber-200 rounded-lg overflow-hidden bg-amber-50">
+                      <div className="px-3 py-2 bg-amber-100 border-b border-amber-200 text-xs font-semibold text-amber-800">
+                        유사한 기업명이 여러 개 있습니다. 해당하는 기업을 선택해 주세요.
+                      </div>
+                      <ul className="max-h-48 overflow-y-auto divide-y divide-amber-100">
+                        {dartCandidates.map(c => (
+                          <li key={c.corp_code}>
+                            <button
+                              type="button"
+                              onClick={() => { setFormName(c.corp_name); handleDartLookup(c.corp_code); }}
+                              className="w-full text-left px-3 py-2.5 text-sm text-gray-800 hover:bg-amber-100 transition-colors"
+                            >
+                              {c.corp_name}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">등급 *</label>
@@ -464,18 +557,6 @@ export function CompanyKorea() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 mb-1">사업자번호</label>
-                  <input name="business_number" type="text" defaultValue={editingCompany?.business_number ?? ''} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-700 mb-1">대표자</label>
-                  <input name="ceo" type="text" defaultValue={editingCompany?.ceo ?? ''} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-700 mb-1">업종</label>
-                  <input name="industry" type="text" defaultValue={editingCompany?.industry ?? ''} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
                   <label className="block text-sm text-gray-700 mb-1">상태 *</label>
                   <select name="status" defaultValue={editingCompany?.status ?? '거래중'} required className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="거래중">거래중</option>
@@ -483,9 +564,25 @@ export function CompanyKorea() {
                     <option value="보류">보류</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">사업자번호</label>
+                  <input name="business_number" type="text" value={formBusinessNumber} onChange={e => setFormBusinessNumber(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">대표자</label>
+                  <input name="ceo" type="text" value={formCeo} onChange={e => setFormCeo(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">업종</label>
+                  <input name="industry" type="text" value={formIndustry} onChange={e => setFormIndustry(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
                 <div className="col-span-2">
                   <label className="block text-sm text-gray-700 mb-1">주소</label>
-                  <input name="address" type="text" defaultValue={editingCompany?.address ?? ''} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input name="address" type="text" value={formAddress} onChange={e => setFormAddress(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 {editingCompany && (
                   <>

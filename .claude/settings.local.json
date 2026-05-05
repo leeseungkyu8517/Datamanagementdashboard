@@ -6,7 +6,8 @@
       "Bash(python -c \"import json,sys; secrets=[s['name'] for s in json.load\\(sys.stdin\\)]; print\\('\\\\n'.join\\(secrets\\)\\)\")",
       "Bash(node -e ' *)",
       "Bash(SUPABASE_ACCESS_TOKEN=sbp_6d6eec13c9883c31bca0f45296fd3e62ff1024d7 ./supabase.exe functions deploy predict-problem --project-ref kdcepqzuoakbyrlrvpqf)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npx supabase *)"
     ]
   }
 }

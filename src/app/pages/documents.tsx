@@ -264,8 +264,8 @@ export function Documents() {
 
     if (selectedFile) {
       setUploading(true);
-      const safeName = selectedFile.name.replace(/[^a-zA-Z0-9._\-가-힣]/g, '_');
-      const storagePath = `${projectId ?? 'general'}/${Date.now()}_${safeName}`;
+      const ext = selectedFile.name.includes('.') ? selectedFile.name.split('.').pop()!.replace(/[^a-zA-Z0-9]/g, '') : '';
+      const storagePath = `${projectId ?? 'general'}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext ? '.' + ext : ''}`;
       const { error: upErr } = await supabase.storage
         .from('documents')
         .upload(storagePath, selectedFile, { cacheControl: '3600', upsert: false });
@@ -304,9 +304,37 @@ export function Documents() {
       const { error } = await supabase.from('documents').insert(payload);
       if (error) { alert(`저장 실패: ${error.message}`); setSaving(false); return; }
     }
+
+    // 신규 추가 시: 조건 충족 여부 확인 후 자동 등급·단계 변경
+    let autoUpgradedName = '';
+    if (!editingDoc && projectId) {
+      const project = projects.find(p => p.id === projectId);
+      if (
+        project &&
+        (project.stage === '미팅 요청' || project.stage === '미팅 진행') &&
+        (project.issue_grade === 'D' || project.issue_grade === 'E')
+      ) {
+        const existingProjectDocs = docs.filter(d => d.sales_project_id === projectId);
+        const hasQuotation = modalDocType === 'quotation' || existingProjectDocs.some(d => d.doc_type === 'quotation');
+        const hasContract  = modalDocType === 'contract'  || existingProjectDocs.some(d => d.doc_type === 'contract');
+
+        if (hasQuotation && hasContract) {
+          const { error: upgradeErr } = await supabase
+            .from('sales_projects')
+            .update({ issue_grade: 'C', stage: '견적서 발송' })
+            .eq('id', projectId);
+          if (!upgradeErr) autoUpgradedName = project.project_name;
+        }
+      }
+    }
+
     setSaving(false);
     closeModal();
     await fetchAll();
+
+    if (autoUpgradedName) {
+      alert(`"${autoUpgradedName}" 프로젝트에 견적서와 계약서가 모두 등록되어\n안건 등급이 C등급으로, 영업 단계가 "견적서 발송"으로 자동 변경되었습니다.`);
+    }
   };
 
   const handleDownload = (doc: SalesDocument) => {
