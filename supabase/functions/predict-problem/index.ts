@@ -19,20 +19,34 @@ Deno.serve(async (req) => {
 
     if (!company_name?.trim()) return json({ error: "company_name 필수" }, 400);
 
-    const prompt = `당신은 B2B IT 영업 전문가입니다.
-아래 레퍼런스 사례 데이터를 보고, 이 기업이 솔루션 도입 전에 겪었을 근본 원인(문제점)을 1~2문장으로 예측하세요.
+    const hasResult = !!result?.trim();
+
+    const prompt = `당신은 기업의 비즈니스 모델과 운영 구조를 혁신하는 전략 기획 전문가이자 데이터 사이언티스트입니다.
+
+아래 레퍼런스 사례를 분석하여 [원인]과 [수치 성과]를 도출하세요.
 
 기업명: ${company_name}
 업종: ${industry || "불명"}
 도입 솔루션: ${solution || "불명"}
-도입 결과/성과: ${result || "불명"}
+기존 성과 데이터: ${result || "없음 (예측 필요)"}
 관련 태그: ${tags || "없음"}
 
-규칙:
-- "원인:" 같은 접두어 없이 예측 내용만 출력
-- 1~2문장, 간결하게
-- 수치나 구체적 맥락이 있으면 활용
-- 한국어로 답변`;
+[원인 분석 — 3단계 원칙]
+1. 사실 너머의 가설: 결과론적 해석 금지. 업계 특성을 고려한 구체적 운영 병목(Bottleneck) 가설을 제시한다.
+2. 기술과 숫자의 연결: 성과 수치가 솔루션과 어떻게 물리적으로 연결되는지 메커니즘을 추론한다.
+3. 차별화된 통찰: 단순 트렌드 추종인지, 경쟁사 대비 전략적 우위 확보인지 독창적 시각을 제시한다.
+
+[수치 성과]
+${hasResult
+  ? `기존 성과 데이터가 있으므로 그대로 반환한다: "${result}"`
+  : `기존 성과 데이터가 없다. 업종(${industry || "불명"})과 솔루션(${solution || "불명"}) 기반으로 업계 평균 벤치마크를 참고하여 구체적인 수치 추정치 1~2문장을 작성한다. 예: "생산 공정 사이클 타임 25~35% 단축, 연간 품질 불량 처리 비용 약 15% 절감 추정"`
+}
+
+[출력 형식] 마크다운·코드블록 없이 순수 JSON만 반환:
+{
+  "problem": "원인 분석 2~3문장. '보인다' '있을 것이다' 같은 모호한 표현 금지. 확신 있는 어조.",
+  "result": "수치 포함 성과 1~2문장"
+}`;
 
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -43,8 +57,8 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
-        max_tokens: 256,
+        temperature: 0.55,
+        max_tokens: 600,
       }),
       signal: AbortSignal.timeout(30_000),
     });
@@ -57,9 +71,25 @@ Deno.serve(async (req) => {
     const data = JSON.parse(new TextDecoder("utf-8").decode(await res.arrayBuffer())) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
-    const problem = (data.choices?.[0]?.message?.content ?? "").trim();
+    const raw = (data.choices?.[0]?.message?.content ?? "").trim();
 
-    return json({ success: true, problem });
+    // JSON 파싱 (모델이 코드블록을 붙이는 경우 대비)
+    const match = raw.match(/\{[\s\S]*\}/);
+    let problem = "";
+    let resultOut = "";
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]) as { problem?: string; result?: string };
+        problem   = (parsed.problem ?? "").trim();
+        resultOut = (parsed.result  ?? "").trim();
+      } catch {
+        problem = raw;
+      }
+    } else {
+      problem = raw;
+    }
+
+    return json({ success: true, problem, result: resultOut });
   } catch (err) {
     console.error(err);
     return json({ error: String(err) }, 500);

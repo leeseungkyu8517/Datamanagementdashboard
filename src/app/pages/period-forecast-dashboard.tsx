@@ -74,15 +74,18 @@ export function PeriodForecastDashboard() {
   // 기수 내 진행 비율 (0~1)
   const fiscalProgress = (currentFiscalMonthIndex + 1) / 12;
 
-  useEffect(() => { fetchProjects(); }, []);
+  useEffect(() => { fetchProjects(); fetchTargets(); }, []);
+
+  async function fetchTargets() {
+    const { data } = await supabase.from('settings').select('value').eq('key', 'targets').single();
+    if (data?.value) setTargets(data.value as Record<string, number>);
+  }
 
   async function fetchProjects() {
     setLoading(true);
     const { data: projData } = await supabase
       .from('sales_projects')
-      .select('*')
-      .gte('created_at', `${fiscalStartYear}-09-01`)
-      .lte('created_at', `${fiscalStartYear + 1}-08-31T23:59:59`);
+      .select('*');
     const proj = projData ?? [];
     setProjects(proj);
 
@@ -110,8 +113,29 @@ export function PeriodForecastDashboard() {
   };
 
   const getRegionTotal = (region: string) => {
-    const scale = REGION_SCALE[region] ?? 1;
-    return Math.round(getSrcProjects(region).reduce((sum, p) => sum + (p.amount ?? 0), 0) * scale);
+    let total = 0;
+    getSrcProjects(region).forEach(p => {
+      const notes = meetingNotesByProject[p.id] ?? [];
+      const paymentNotes = notes.filter(n =>
+        (n.deposit_pct ?? 0) + (n.interim_pct ?? 0) + (n.balance_pct ?? 0) > 0
+      );
+      if (!paymentNotes.length) return;
+      const latestNote = [...paymentNotes].sort((a, b) => b.date.localeCompare(a.date))[0];
+      const baseAmt = latestNote.estimated_amount ?? p.amount ?? 0;
+      ([
+        { date: latestNote.deposit_date, pct: latestNote.deposit_pct },
+        { date: latestNote.interim_date, pct: latestNote.interim_pct },
+        { date: latestNote.balance_date, pct: latestNote.balance_pct },
+      ] as Array<{ date: string | null; pct: number | null }>).forEach(({ date, pct }) => {
+        if (!date || !pct) return;
+        const d = new Date(date);
+        const y = d.getFullYear(); const m = d.getMonth() + 1;
+        if ((y === fiscalStartYear && m >= 9) || (y === fiscalStartYear + 1 && m <= 8)) {
+          total += Math.round(baseAmt * pct / 100);
+        }
+      });
+    });
+    return total;
   };
 
   // 월별 개별 스케일 (fiscal month 순서: Sep=0, Oct=1, ..., Aug=11)
@@ -128,7 +152,7 @@ export function PeriodForecastDashboard() {
     const getMonthRaw = (fiscalIdx: number) => {
       const calMonth = FISCAL_CAL_MONTHS[fiscalIdx];
       const year = calMonth >= 9 ? fiscalStartYear : fiscalStartYear + 1;
-      const s = hasOwnData ? 1 : (PER_MONTH_SCALE[region]?.[fiscalIdx] ?? REGION_SCALE[region] ?? 1);
+      const s = 1;
 
       let actualSum = 0, maxSum = 0, minSum = 0;
 
@@ -157,13 +181,6 @@ export function PeriodForecastDashboard() {
               minSum += Math.round(baseMin * pct / 100);
             }
           });
-        } else {
-          const d = new Date(p.created_at);
-          if (d.getFullYear() === year && d.getMonth() + 1 === calMonth) {
-            actualSum += p.amount ?? 0;
-            maxSum += p.max_amount ?? p.amount ?? 0;
-            minSum += p.min_amount ?? p.amount ?? 0;
-          }
         }
       });
 
@@ -213,12 +230,13 @@ export function PeriodForecastDashboard() {
     setEditingTargets(true);
   };
 
-  const saveTargets = () => {
+  const saveTargets = async () => {
     const updated: Record<string, number> = {};
     for (const [k, v] of Object.entries(draftTargets)) {
       const num = parseFloat(v);
       updated[k] = isNaN(num) ? targets[k] : Math.round(num * 100000000);
     }
+    await supabase.from('settings').upsert({ key: 'targets', value: updated });
     setTargets(updated);
     setEditingTargets(false);
   };

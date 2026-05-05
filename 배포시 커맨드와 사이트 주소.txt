@@ -6,8 +6,8 @@
 
 [로컬]
   로컬 개발 서버 실행 명령어:
-
-  npx vite --host --cwd "C:\Users\lsg85\IdeaProjects\Datamanagementdashboard"
+cd C:\Users\lsg85\IdeaProjects\Datamanagementdashboard
+npx vite --host  
 
   또는 프로젝트 폴더 안에서 직접:
   cd C:\Users\lsg85\IdeaProjects\Datamanagementdashboard

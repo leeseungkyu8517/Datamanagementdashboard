@@ -222,9 +222,15 @@ export interface MeetingBrief {
   risk_factors: string
 }
 
+export interface Settings {
+  key: string;
+  value: Record<string, unknown>;
+}
+
 export interface Database {
   public: {
     Tables: {
+      settings: { Row: Settings; Insert: Settings; Update: Partial<Settings> }
       companies: { Row: Company; Insert: Omit<Company, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Omit<Company, 'id'>> }
       company_managers: { Row: CompanyManager; Insert: Omit<CompanyManager, 'id' | 'created_at'>; Update: Partial<Omit<CompanyManager, 'id'>> }
       sales_personnel: { Row: SalesPersonnel; Insert: Omit<SalesPersonnel, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Omit<SalesPersonnel, 'id'>> }

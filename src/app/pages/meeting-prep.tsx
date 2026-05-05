@@ -82,10 +82,17 @@ export function MeetingPrep() {
   const [cdSearch, setCdSearch]                 = useState('');
   const [cdLoading, setCdLoading]               = useState(false);
 
-  // 원인 AI
-  const [problemValue, setProblemValue]     = useState('');
-  const [predictingProblem, setPredictingProblem] = useState(false);
+  // 원인 AI + 성과 AI
+  const [problemValue, setProblemValue]         = useState('');
+  const [resultValue,  setResultValue]          = useState('');
+  const [predictingFields, setPredictingFields] = useState(false);
   const caseFormRef = useRef<HTMLFormElement>(null);
+
+  // 미팅 모달 기업 선택
+  const [meetingInputMode, setMeetingInputMode]         = useState<'direct' | 'list'>('direct');
+  const [meetingTargetCompany, setMeetingTargetCompany] = useState('');
+  const [meetingIndustry, setMeetingIndustry]           = useState('');
+  const [meetingCdSearch, setMeetingCdSearch]           = useState('');
 
   // AI 브리핑
   const [briefLoading, setBriefLoading]   = useState(false);
@@ -135,7 +142,7 @@ export function MeetingPrep() {
   async function fetchAll() {
     setLoading(true);
     const [{ data: c, error: ce }, { data: m }, { data: mc }] = await Promise.all([
-      supabase.from('cases').select('*').order('created_at', { ascending: false }),
+      supabase.from('cases_filtered').select('*').order('created_at', { ascending: false }),
       supabase.from('meetings').select('*').order('meeting_date'),
       supabase.from('meeting_cases').select('*'),
     ]);
@@ -247,26 +254,27 @@ export function MeetingPrep() {
     }
   }
 
-  async function handlePredictProblem() {
+  async function handlePredictFields() {
     if (!caseFormRef.current) return;
     const fd = new FormData(caseFormRef.current);
-    setPredictingProblem(true);
+    setPredictingFields(true);
     try {
       const { data, error } = await supabase.functions.invoke('predict-problem', {
         body: {
           company_name: fd.get('company_name') as string,
           industry:     fd.get('industry') as string,
           solution:     fd.get('solution') as string,
-          result:       fd.get('result') as string,
+          result:       resultValue,
           tags:         fd.get('tags') as string,
         },
       });
       if (error) throw error;
       if (data?.problem) setProblemValue(data.problem);
+      if (data?.result)  setResultValue(data.result);
     } catch (e) {
-      console.error('원인 AI 예측 실패:', e);
+      console.error('AI 예측 실패:', e);
     } finally {
-      setPredictingProblem(false);
+      setPredictingFields(false);
     }
   }
 
@@ -277,7 +285,9 @@ export function MeetingPrep() {
   }
 
   async function handleSaveMeeting(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); setSaving(true);
+    e.preventDefault();
+    if (!meetingTargetCompany.trim()) return;
+    setSaving(true);
     const fd = new FormData(e.currentTarget);
     const payload = {
       target_company: fd.get('target_company') as string,
@@ -390,25 +400,19 @@ export function MeetingPrep() {
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
                 <Bot className="w-4 h-4" />AI 수집
               </button>
-              <button onClick={() => { setEditingCase(null); setProblemValue(''); setShowCaseModal(true); }}
+              <button onClick={() => { setEditingCase(null); setProblemValue(''); setResultValue(''); setShowCaseModal(true); }}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
                 <Plus className="w-4 h-4" />사례 추가
               </button>
             </div>
           </div>
 
-          {/* Case grid */}
+          {/* Case list (accordion by company) */}
           {loading ? (
-            <div className="grid grid-cols-2 gap-4">
-              {[1,2,3,4].map(i => (
-                <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 h-44 animate-pulse">
-                  <div className="h-4 bg-gray-100 rounded mb-2 w-2/3" />
-                  <div className="h-3 bg-gray-100 rounded mb-4 w-1/3" />
-                  <div className="space-y-2">
-                    <div className="h-3 bg-gray-100 rounded w-full" />
-                    <div className="h-3 bg-gray-100 rounded w-5/6" />
-                    <div className="h-3 bg-gray-100 rounded w-4/5" />
-                  </div>
+            <div className="space-y-3">
+              {[1,2,3].map(i => (
+                <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 h-16 animate-pulse">
+                  <div className="h-4 bg-gray-100 rounded w-1/3" />
                 </div>
               ))}
             </div>
@@ -417,86 +421,133 @@ export function MeetingPrep() {
               <FileText className="w-10 h-10 text-gray-300" />
               <p className="text-sm text-gray-400">{cases.length === 0 ? '등록된 사례가 없습니다' : '검색 결과가 없습니다'}</p>
               {cases.length === 0 && (
-                <button onClick={() => { setEditingCase(null); setProblemValue(''); setShowCaseModal(true); }}
+                <button onClick={() => { setEditingCase(null); setProblemValue(''); setResultValue(''); setShowCaseModal(true); }}
                   className="mt-1 text-sm text-indigo-500 hover:underline">
                   첫 번째 사례 추가하기
                 </button>
               )}
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4">
-              {filteredCases.map(c => (
-                <div key={c.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-col gap-3 hover:shadow-md transition-shadow">
-                  {/* Card header */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-900 truncate">{c.company_name}</p>
-                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                        {c.industry && (
-                          <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs">{c.industry}</span>
-                        )}
-                        {c.company_size && (
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${SIZE_STYLE[c.company_size] ?? ''}`}>
-                            {c.company_size}
-                          </span>
-                        )}
-                        {c.period && (
-                          <span className="text-xs text-gray-400">{c.period}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      {c.source_url && (
-                        <a href={c.source_url} target="_blank" rel="noreferrer"
-                          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-                          <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
-                        </a>
+          ) : (() => {
+            // 기업명 기준 그룹화 (순서 유지)
+            const seen: string[] = [];
+            filteredCases.forEach(c => { if (!seen.includes(c.company_name)) seen.push(c.company_name); });
+            const groups = seen.map(name => ({ name, items: filteredCases.filter(c => c.company_name === name) }));
+
+            return (
+              <div className="space-y-3">
+                {groups.map(({ name, items }) => {
+                  const isOpen = openCompanies.has(name);
+                  const first = items[0];
+                  const toggleCompany = () => setOpenCompanies(prev => {
+                    const next = new Set(prev);
+                    next.has(name) ? next.delete(name) : next.add(name);
+                    return next;
+                  });
+
+                  return (
+                    <div key={name} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                      {/* 아코디언 헤더 */}
+                      <button
+                        onClick={toggleCompany}
+                        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-gray-900">{name}</span>
+                          <span className="text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full font-medium">{items.length}개</span>
+                          {first.industry && (
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs">{first.industry}</span>
+                          )}
+                          {first.company_size && (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${SIZE_STYLE[first.company_size] ?? ''}`}>
+                              {first.company_size}
+                            </span>
+                          )}
+                          {!isOpen && first.result && (
+                            <span className="text-xs text-emerald-600 font-medium truncate max-w-xs">✓ {first.result.slice(0, 40)}{first.result.length > 40 ? '…' : ''}</span>
+                          )}
+                        </div>
+                        {isOpen
+                          ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
+                          : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                        }
+                      </button>
+
+                      {/* 아코디언 내용 */}
+                      {isOpen && (
+                        <div className="divide-y divide-gray-50 border-t border-gray-100">
+                          {items.map(c => (
+                            <div key={c.id} className="p-5 flex flex-col gap-3">
+                              {/* 케이스 헤더 (순번 + 액션) */}
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {c.industry && c.industry !== first.industry && (
+                                    <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs">{c.industry}</span>
+                                  )}
+                                  {c.company_size && (
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${SIZE_STYLE[c.company_size] ?? ''}`}>
+                                      {c.company_size}
+                                    </span>
+                                  )}
+                                  {c.period && <span className="text-xs text-gray-400">{c.period}</span>}
+                                </div>
+                                <div className="flex gap-1 shrink-0">
+                                  {c.source_url && (
+                                    <a href={c.source_url} target="_blank" rel="noreferrer"
+                                      className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                                      <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+                                    </a>
+                                  )}
+                                  <button onClick={() => { setEditingCase(c); setProblemValue(c.problem ?? ''); setResultValue(c.result ?? ''); setShowCaseModal(true); }}
+                                    className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors">
+                                    <Edit2 className="w-3.5 h-3.5 text-blue-500" />
+                                  </button>
+                                  <button onClick={() => handleDeleteCase(c.id)}
+                                    className="p-1.5 hover:bg-red-50 rounded-lg transition-colors">
+                                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* P / S / R */}
+                              <div className="space-y-1.5 text-sm">
+                                {c.problem && (
+                                  <div className="flex gap-2">
+                                    <span className="shrink-0 text-[10px] font-bold text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded mt-0.5">원인</span>
+                                    <span className="text-gray-600 line-clamp-3">{c.problem}</span>
+                                  </div>
+                                )}
+                                {c.solution && (
+                                  <div className="flex gap-2">
+                                    <span className="shrink-0 text-[10px] font-bold text-blue-400 bg-blue-50 px-1.5 py-0.5 rounded mt-0.5">해결</span>
+                                    <span className="text-gray-600 line-clamp-2">{c.solution}</span>
+                                  </div>
+                                )}
+                                {c.result && (
+                                  <div className="flex gap-2">
+                                    <span className="shrink-0 text-[10px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded mt-0.5">성과</span>
+                                    <span className="text-gray-800 font-medium line-clamp-2">{c.result}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Tags */}
+                              {(c.tags?.length ?? 0) > 0 && (
+                                <div className="flex flex-wrap gap-1 pt-1 border-t border-gray-50">
+                                  {c.tags!.map(tag => (
+                                    <span key={tag} className="px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded-full text-xs">#{tag}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       )}
-                      <button onClick={() => { setEditingCase(c); setProblemValue(c.problem ?? ''); setShowCaseModal(true); }}
-                        className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors">
-                        <Edit2 className="w-3.5 h-3.5 text-blue-500" />
-                      </button>
-                      <button onClick={() => handleDeleteCase(c.id)}
-                        className="p-1.5 hover:bg-red-50 rounded-lg transition-colors">
-                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                      </button>
                     </div>
-                  </div>
-
-                  {/* P / S / R */}
-                  <div className="space-y-1.5 text-sm">
-                    {c.problem && (
-                      <div className="flex gap-2">
-                        <span className="shrink-0 text-[10px] font-bold text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded mt-0.5">문제</span>
-                        <span className="text-gray-600 line-clamp-2">{c.problem}</span>
-                      </div>
-                    )}
-                    {c.solution && (
-                      <div className="flex gap-2">
-                        <span className="shrink-0 text-[10px] font-bold text-blue-400 bg-blue-50 px-1.5 py-0.5 rounded mt-0.5">해결</span>
-                        <span className="text-gray-600 line-clamp-2">{c.solution}</span>
-                      </div>
-                    )}
-                    {c.result && (
-                      <div className="flex gap-2">
-                        <span className="shrink-0 text-[10px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded mt-0.5">성과</span>
-                        <span className="text-gray-800 font-medium line-clamp-2">{c.result}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Tags */}
-                  {(c.tags?.length ?? 0) > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-1 border-t border-gray-50">
-                      {c.tags!.map(tag => (
-                        <span key={tag} className="px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded-full text-xs">#{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -508,7 +559,7 @@ export function MeetingPrep() {
           <div className="w-64 shrink-0 bg-white border-r border-gray-100 flex flex-col">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">미팅 목록</span>
-              <button onClick={() => { setEditingMeeting(null); setShowMeetingModal(true); }}
+              <button onClick={() => { setEditingMeeting(null); setMeetingTargetCompany(''); setMeetingIndustry(''); setMeetingInputMode('direct'); setMeetingCdSearch(''); setShowMeetingModal(true); }}
                 className="p-1 hover:bg-indigo-50 rounded-lg transition-colors">
                 <Plus className="w-4 h-4 text-indigo-500" />
               </button>
@@ -552,7 +603,7 @@ export function MeetingPrep() {
               <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
                 <Calendar className="w-12 h-12 text-gray-200" />
                 <p className="text-gray-400 text-sm">왼쪽에서 미팅을 선택하거나 새로 만들어 주세요</p>
-                <button onClick={() => { setEditingMeeting(null); setShowMeetingModal(true); }}
+                <button onClick={() => { setEditingMeeting(null); setMeetingTargetCompany(''); setMeetingIndustry(''); setMeetingInputMode('direct'); setMeetingCdSearch(''); setShowMeetingModal(true); }}
                   className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
                   <Plus className="w-4 h-4" />새 미팅 만들기
                 </button>
@@ -579,7 +630,7 @@ export function MeetingPrep() {
                       </div>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => { setEditingMeeting(activeMeeting); setShowMeetingModal(true); }}
+                      <button onClick={() => { setEditingMeeting(activeMeeting); setMeetingTargetCompany(activeMeeting.target_company); setMeetingIndustry(activeMeeting.industry ?? ''); setMeetingInputMode('direct'); setMeetingCdSearch(''); setShowMeetingModal(true); }}
                         className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors">
                         <Edit2 className="w-3.5 h-3.5 text-blue-500" />
                       </button>
@@ -863,12 +914,12 @@ export function MeetingPrep() {
       {/* ── Case Modal ───────────────────────────────────────────────── */}
       {showCaseModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
-          onClick={() => { setShowCaseModal(false); setEditingCase(null); setProblemValue(''); }}>
+          onClick={() => { setShowCaseModal(false); setEditingCase(null); setProblemValue(''); setResultValue(''); }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white">
               <h3 className="text-base font-bold text-gray-900">{editingCase ? '사례 수정' : '새 사례 등록'}</h3>
-              <button onClick={() => { setShowCaseModal(false); setEditingCase(null); setProblemValue(''); }}
+              <button onClick={() => { setShowCaseModal(false); setEditingCase(null); setProblemValue(''); setResultValue(''); }}
                 className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
             </div>
             <form ref={caseFormRef} onSubmit={handleSaveCase} className="px-6 py-4 space-y-4">
@@ -903,11 +954,11 @@ export function MeetingPrep() {
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold text-gray-600">원인 AI</label>
-                  <button type="button" onClick={handlePredictProblem} disabled={predictingProblem}
+                  <label className="text-xs font-semibold text-gray-600">원인 (가설/추론)</label>
+                  <button type="button" onClick={handlePredictFields} disabled={predictingFields}
                     className="flex items-center gap-1 px-2 py-1 bg-violet-50 text-violet-600 border border-violet-200 rounded-lg text-xs font-medium hover:bg-violet-100 disabled:opacity-50 transition-colors">
-                    {predictingProblem
-                      ? <><span className="w-3 h-3 border border-violet-400/40 border-t-violet-500 rounded-full animate-spin inline-block" />예측 중…</>
+                    {predictingFields
+                      ? <><span className="w-3 h-3 border border-violet-400/40 border-t-violet-500 rounded-full animate-spin inline-block" />분석 중…</>
                       : <><Sparkles className="w-3 h-3" />AI 예측</>
                     }
                   </button>
@@ -922,9 +973,18 @@ export function MeetingPrep() {
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-emerald-600 mb-1.5">수치 포함 성과 *</label>
-                <textarea name="result" rows={2} defaultValue={editingCase?.result ?? ''}
-                  placeholder="예: 처리 시간 40% 단축, 인건비 월 200만원 절감"
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-emerald-600">수치 포함 성과 *</label>
+                  <button type="button" onClick={handlePredictFields} disabled={predictingFields}
+                    className="flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-xs font-medium hover:bg-emerald-100 disabled:opacity-50 transition-colors">
+                    {predictingFields
+                      ? <><span className="w-3 h-3 border border-emerald-400/40 border-t-emerald-500 rounded-full animate-spin inline-block" />분석 중…</>
+                      : <><Sparkles className="w-3 h-3" />AI 예측</>
+                    }
+                  </button>
+                </div>
+                <textarea name="result" rows={2} value={resultValue} onChange={e => setResultValue(e.target.value)}
+                  placeholder="예: 처리 시간 40% 단축, 인건비 월 200만원 절감 (AI 예측 또는 직접 입력)"
                   className="w-full px-3 py-2 border border-emerald-200 bg-emerald-50/40 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 resize-none" />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -942,7 +1002,7 @@ export function MeetingPrep() {
                 </div>
               </div>
               <div className="flex gap-3 pt-2 border-t border-gray-100">
-                <button type="button" onClick={() => { setShowCaseModal(false); setEditingCase(null); setProblemValue(''); }}
+                <button type="button" onClick={() => { setShowCaseModal(false); setEditingCase(null); setProblemValue(''); setResultValue(''); }}
                   className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">취소</button>
                 <button type="submit" disabled={saving}
                   className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
@@ -1112,19 +1172,80 @@ export function MeetingPrep() {
       {/* ── Meeting Modal ────────────────────────────────────────────── */}
       {showMeetingModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
-          onClick={() => { setShowMeetingModal(false); setEditingMeeting(null); }}>
+          onClick={() => { setShowMeetingModal(false); setEditingMeeting(null); setMeetingTargetCompany(''); setMeetingIndustry(''); setMeetingInputMode('direct'); setMeetingCdSearch(''); }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="text-base font-bold text-gray-900">{editingMeeting ? '미팅 수정' : '새 미팅 만들기'}</h3>
-              <button onClick={() => { setShowMeetingModal(false); setEditingMeeting(null); }}
+              <button onClick={() => { setShowMeetingModal(false); setEditingMeeting(null); setMeetingTargetCompany(''); setMeetingIndustry(''); setMeetingInputMode('direct'); setMeetingCdSearch(''); }}
                 className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
             </div>
             <form onSubmit={handleSaveMeeting} className="px-6 py-4 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">미팅 대상 회사 *</label>
-                <input name="target_company" required defaultValue={editingMeeting?.target_company}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-gray-600">미팅 대상 회사 *</label>
+                  <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                    {(['direct', 'list'] as const).map(m => (
+                      <button key={m} type="button"
+                        onClick={() => { setMeetingInputMode(m); if (m === 'list') loadCdCompanies(); }}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                          meetingInputMode === m ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                        }`}>
+                        {m === 'direct' ? '직접 입력' : '목록 선택'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {meetingInputMode === 'direct' ? (
+                  <input name="target_company" required
+                    value={meetingTargetCompany}
+                    onChange={e => setMeetingTargetCompany(e.target.value)}
+                    placeholder="예: 삼성전자, LG화학"
+                    autoFocus
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                ) : (
+                  <>
+                    <input type="hidden" name="target_company" value={meetingTargetCompany} />
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="relative border-b border-gray-100">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                        <input
+                          value={meetingCdSearch}
+                          onChange={e => setMeetingCdSearch(e.target.value)}
+                          placeholder="기업명 검색…"
+                          autoFocus
+                          className="w-full pl-8 pr-3 py-2 text-sm focus:outline-none"
+                        />
+                      </div>
+                      <div className="max-h-44 overflow-y-auto">
+                        {cdLoading ? (
+                          <div className="py-4 text-center text-xs text-gray-400">불러오는 중…</div>
+                        ) : cdCompanies.filter(c => !meetingCdSearch || c.name.toLowerCase().includes(meetingCdSearch.toLowerCase())).length === 0 ? (
+                          <div className="py-4 text-center text-xs text-gray-400">기업이 없습니다</div>
+                        ) : (
+                          cdCompanies
+                            .filter(c => !meetingCdSearch || c.name.toLowerCase().includes(meetingCdSearch.toLowerCase()))
+                            .map(c => (
+                              <button key={c.id} type="button"
+                                onClick={() => { setMeetingTargetCompany(c.name); setMeetingIndustry(c.industry ?? ''); }}
+                                className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50 transition-colors ${
+                                  meetingTargetCompany === c.name ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-700'
+                                }`}>
+                                <span>{c.name}</span>
+                                {c.industry && <span className="text-xs text-gray-400">{c.industry}</span>}
+                              </button>
+                            ))
+                        )}
+                      </div>
+                      {meetingTargetCompany && (
+                        <div className="px-3 py-2 bg-indigo-50 border-t border-indigo-100 text-xs text-indigo-700 font-medium">
+                          선택됨: {meetingTargetCompany}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1135,7 +1256,9 @@ export function MeetingPrep() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">업종</label>
-                  <input name="industry" defaultValue={editingMeeting?.industry ?? ''}
+                  <input name="industry"
+                    value={meetingIndustry}
+                    onChange={e => setMeetingIndustry(e.target.value)}
                     placeholder="예: 제조, IT"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
@@ -1147,7 +1270,7 @@ export function MeetingPrep() {
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
               </div>
               <div className="flex gap-3 pt-2 border-t border-gray-100">
-                <button type="button" onClick={() => { setShowMeetingModal(false); setEditingMeeting(null); }}
+                <button type="button" onClick={() => { setShowMeetingModal(false); setEditingMeeting(null); setMeetingTargetCompany(''); setMeetingIndustry(''); setMeetingInputMode('direct'); setMeetingCdSearch(''); }}
                   className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">취소</button>
                 <button type="submit" disabled={saving}
                   className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">

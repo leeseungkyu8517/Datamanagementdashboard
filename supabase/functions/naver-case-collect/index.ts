@@ -57,7 +57,7 @@ DX(디지털 전환), 솔루션 도입, IT 시스템 구축 사례를 분석하�
     "company_name": "도입 기업명 (기사 속 실제 기업, 없으면 ${companyName})",
     "industry": "업종 (제조/IT/물류/금융/유통/건설/의료 등, 불명확 시 null)",
     "company_size": "대기업 또는 중견 또는 스타트업 (판단 불가 시 null)",
-    "problem": "도입 전 문제점 1~2문장 (없으면 null)",
+    "problem": "솔루션 도입 전 운영 병목(Bottleneck)에 대한 가설적 추론 1~2문장. 단순 '효율 개선 필요' 같은 결과론적 표현 금지. 업종 특성과 성과 수치를 연결한 전략적 분석으로 작성. 정보 부족 시 null",
     "solution": "도입한 솔루션/시스템 1~2문장",
     "result": "수치 포함 성과 1~2문장 (없으면 null)",
     "period": "도입 기간 (예: 6개월, 없으면 null)",
@@ -147,6 +147,77 @@ function ruleBasedExtract(
   });
 }
 
+// ── 원인 AI + 수치 성과 AI: 가설/추론 기반 자동 채우기 ──────────────────────
+async function predictFields(
+  companyName: string,
+  industry: string | null,
+  solution: string | null,
+  result: string | null,
+  tags: string[] | null,
+  groqKey: string,
+): Promise<{ problem: string | null; result: string | null }> {
+  const hasResult = !!result?.trim();
+
+  const prompt = `당신은 기업의 비즈니스 모델과 운영 구조를 혁신하는 전략 기획 전문가이자 데이터 사이언티스트입니다.
+
+아래 레퍼런스 사례를 분석하여 [원인]과 [수치 성과]를 도출하세요.
+
+기업명: ${companyName}
+업종: ${industry || "불명"}
+도입 솔루션: ${solution || "불명"}
+기존 성과 데이터: ${result || "없음 (예측 필요)"}
+관련 태그: ${tags?.join(", ") || "없음"}
+
+[원인 분석 — 3단계 원칙]
+1. 사실 너머의 가설: 결과론적 해석 금지. 업계 특성을 고려한 구체적 운영 병목(Bottleneck) 가설을 제시한다.
+2. 기술과 숫자의 연결: 성과 수치가 솔루션과 어떻게 물리적으로 연결되는지 메커니즘을 추론한다.
+3. 차별화된 통찰: 단순 트렌드 추종인지, 경쟁사 대비 전략적 우위 확보인지 독창적 시각을 제시한다.
+
+[수치 성과]
+${hasResult
+  ? `기존 성과 데이터가 있으므로 그대로 반환한다: "${result}"`
+  : `기존 성과 데이터가 없다. 업종(${industry || "불명"})과 솔루션(${solution || "불명"}) 기반으로 업계 평균 벤치마크를 참고하여 구체적인 수치 추정치 1~2문장을 작성한다.`
+}
+
+[출력 형식] 마크다운·코드블록 없이 순수 JSON만:
+{
+  "problem": "원인 분석 2~3문장. 모호한 표현 금지. 확신 있는 어조.",
+  "result": "수치 포함 성과 1~2문장"
+}`;
+
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${groqKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.55,
+        max_tokens: 600,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) return { problem: null, result: null };
+    const data = JSON.parse(new TextDecoder("utf-8").decode(await res.arrayBuffer())) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const raw = (data.choices?.[0]?.message?.content ?? "").trim();
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return { problem: raw || null, result: null };
+    try {
+      const parsed = JSON.parse(match[0]) as { problem?: string; result?: string };
+      return {
+        problem: parsed.problem?.trim() || null,
+        result:  parsed.result?.trim()  || null,
+      };
+    } catch {
+      return { problem: raw || null, result: null };
+    }
+  } catch {
+    return { problem: null, result: null };
+  }
+}
+
 // ── 메인 핸들러 ──────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -217,22 +288,40 @@ Deno.serve(async (req) => {
       cases = ruleBasedExtract(company_name, uniqueArticles);
     }
 
+    // 선택한 기업명으로 company_name 고정 (AI가 기사 속 다른 기업명을 추출하는 것 방지)
+    cases = cases.map(c => ({ ...c, company_name }));
+
     if (cases.length === 0) return json({ success: true, inserted: 0, message: "관련 DX/솔루션 사례를 찾지 못했습니다." });
 
     // ── cases 테이블 저장 ────────────────────────────────────────────────────
     const inserted: string[] = [];
     for (const c of cases) {
       if (!c.company_name) continue;
+
+      const industry   = c.industry     ? String(c.industry)     : null;
+      const solution   = c.solution     ? String(c.solution)     : null;
+      const tagsArr    = Array.isArray(c.tags) && c.tags.length ? c.tags.map(String) : null;
+
+      let problem = c.problem ? String(c.problem) : null;
+      let result  = c.result  ? String(c.result)  : null;
+
+      // problem 또는 result가 없으면 AI로 자동 채우기
+      if ((!problem || !result) && groqKey) {
+        const predicted = await predictFields(String(c.company_name), industry, solution, result, tagsArr, groqKey);
+        if (!problem) problem = predicted.problem;
+        if (!result)  result  = predicted.result;
+      }
+
       const { data } = await sb.from("cases").insert({
         company_name: String(c.company_name),
-        industry:     c.industry     ? String(c.industry)     : null,
+        industry,
         company_size: c.company_size ? String(c.company_size) : null,
-        problem:      c.problem      ? String(c.problem)      : null,
-        solution:     c.solution     ? String(c.solution)     : null,
-        result:       c.result       ? String(c.result)       : null,
+        problem,
+        solution,
+        result,
         period:       c.period       ? String(c.period)       : null,
         source_url:   c.source_url   ? String(c.source_url)   : null,
-        tags:         Array.isArray(c.tags) && c.tags.length ? c.tags.map(String) : null,
+        tags:         tagsArr,
       }).select("id").single();
       if (data?.id) inserted.push(String(data.id));
     }

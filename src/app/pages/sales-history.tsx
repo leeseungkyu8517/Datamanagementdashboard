@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, Plus, ChevronDown, Calendar, Edit2, Trash2, X, Brain } from 'lucide-react';
 import { AiButton } from '@/app/components/ai-button';
 import { supabase } from '@/lib/supabase';
-import type { SalesProject, MeetingNote, Company, SalesPersonnel, SalesStage, RegionType, IssueGrade } from '@/lib/database.types';
+import type { SalesProject, MeetingNote, Company, SalesPersonnel, SalesStage, RegionType, IssueGrade, CompanyData } from '@/lib/database.types';
 
 const STAGES: SalesStage[] = ['미팅 요청', '미팅 진행', '견적서 발송', '가격 협의', '계약 진행'];
 
@@ -67,6 +67,7 @@ function formatAmount(amount: number | null): string {
 export function SalesHistory() {
   const [projects, setProjects] = useState<SalesProject[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [companyDataList, setCompanyDataList] = useState<CompanyData[]>([]);
   const [personnel, setPersonnel] = useState<SalesPersonnel[]>([]);
   const [meetingNotes, setMeetingNotes] = useState<Record<string, MeetingNote[]>>({});
   const [loading, setLoading] = useState(true);
@@ -81,6 +82,7 @@ export function SalesHistory() {
   const [aiEstimating, setAiEstimating] = useState<Record<string, boolean>>({});
   const [aiEstimateResult, setAiEstimateResult] = useState<Record<string, { amount: number; min_amount: number; max_amount: number; reason: string }>>({});
   const [projectsWithNegotiation, setProjectsWithNegotiation] = useState<Set<string>>(new Set());
+  const [paymentNoteMap, setPaymentNoteMap] = useState<Record<string, MeetingNote>>({});
 
   // 납금 관련 상태
   const [noteEstAmt, setNoteEstAmt] = useState<number | null>(null);
@@ -94,6 +96,7 @@ export function SalesHistory() {
   const [formProjectName, setFormProjectName] = useState('');
   const [formSummary, setFormSummary] = useState('');
   const [formOverview, setFormOverview] = useState('');
+  const [formIssueGrade, setFormIssueGrade] = useState<IssueGrade | ''>('');
   const [noteContent, setNoteContent] = useState('');
 
   useEffect(() => {
@@ -116,21 +119,31 @@ export function SalesHistory() {
       setFormProjectName(editingProject?.project_name ?? '');
       setFormSummary(editingProject?.summary ?? '');
       setFormOverview(editingProject?.project_overview ?? '');
+      setFormIssueGrade(editingProject?.issue_grade ?? '');
     }
   }, [showProjectModal]);
 
   async function fetchAll() {
     setLoading(true);
-    const [{ data: proj }, { data: comp }, { data: pers }, { data: negNotes }] = await Promise.all([
+    const [{ data: proj }, { data: comp }, { data: pers }, { data: negNotes }, { data: payNotes }, { data: cdList }] = await Promise.all([
       supabase.from('sales_projects').select('*').order('created_at', { ascending: false }),
       supabase.from('companies').select('*').order('name'),
       supabase.from('sales_personnel').select('*').order('name'),
       supabase.from('meeting_notes').select('sales_project_id').not('estimated_amount', 'is', null),
+      supabase.from('meeting_notes').select('*')
+        .or('deposit_pct.not.is.null,interim_pct.not.is.null,balance_pct.not.is.null')
+        .order('date', { ascending: false }),
+      supabase.from('company_data').select('id, name').order('name'),
     ]);
     setProjects(proj ?? []);
     setCompanies(comp ?? []);
+    setCompanyDataList(cdList ?? []);
     setPersonnel(pers ?? []);
     setProjectsWithNegotiation(new Set((negNotes ?? []).map(n => n.sales_project_id)));
+    // 프로젝트별 가장 최근 납금일정 회의록 맵
+    const pMap: Record<string, MeetingNote> = {};
+    (payNotes ?? []).forEach(n => { if (!pMap[n.sales_project_id]) pMap[n.sales_project_id] = n; });
+    setPaymentNoteMap(pMap);
     setLoading(false);
   }
 
@@ -179,15 +192,19 @@ export function SalesHistory() {
     setSaving(true);
     const fd = new FormData(e.currentTarget);
 
-    const companyId = fd.get('company_id') as string;
+    const rawCompanyId = fd.get('company_id') as string;
+    // cd_ 접두어는 company_data 테이블 항목 (companies 테이블 미등록)
+    const isCdEntry = rawCompanyId.startsWith('cd_');
+    const companyId = isCdEntry ? '' : rawCompanyId;
     const company = companies.find(c => c.id === companyId);
+    const cdCompany = isCdEntry ? companyDataList.find(c => `cd_${c.id}` === rawCompanyId) : null;
     const personnelId = fd.get('sales_personnel_id') as string;
     const person = personnel.find(p => p.id === personnelId);
 
     const payload = {
       project_name: fd.get('project_name') as string,
       company_id: companyId || null,
-      company_name: company?.name ?? (fd.get('company_name') as string),
+      company_name: company?.name ?? cdCompany?.name ?? (fd.get('company_name') as string),
       business_number: company?.business_number ?? null,
       stage: fd.get('stage') as SalesStage,
       amount: fd.get('amount') ? Number(String(fd.get('amount')).replace(/,/g, '')) : null,
@@ -202,11 +219,57 @@ export function SalesHistory() {
     };
 
     if (editingProject) {
+      if (formIssueGrade !== (editingProject.issue_grade ?? '')) {
+        if (!window.confirm('임의로 안건 등급을 변경하였습니다. 해당 사항을 저장하시겠습니까?')) {
+          setSaving(false);
+          return;
+        }
+      }
       const { data } = await supabase.from('sales_projects').update(payload).eq('id', editingProject.id).select().single();
       if (data) setProjects(projects.map(p => p.id === editingProject.id ? data : p));
     } else {
       const { data } = await supabase.from('sales_projects').insert(payload).select().single();
-      if (data) setProjects([data, ...projects]);
+      if (data) {
+        setProjects([data, ...projects]);
+
+        // 기업을 직접 입력한 경우(드롭다운 미선택) → 해당 지역 기업 관리에 자동 추가
+        if (!companyId && payload.company_name && payload.region) {
+          const { data: existing } = await supabase
+            .from('companies')
+            .select('id')
+            .eq('name', payload.company_name)
+            .eq('region', payload.region)
+            .maybeSingle();
+
+          if (!existing) {
+            const { data: newCompany } = await supabase
+              .from('companies')
+              .insert({
+                name: payload.company_name,
+                region: payload.region,
+                rank: 2,          // C등급
+                status: '협의중',
+                business_number: payload.business_number ?? null,
+                ceo: null,
+                industry: null,
+                address: null,
+                total_projects: 0,
+                total_amount: 0,
+                contact_attempts: 0,
+                successful_contacts: 0,
+              })
+              .select()
+              .single();
+
+            if (newCompany) {
+              // 생성된 company_id를 프로젝트에 역링크
+              await supabase.from('sales_projects').update({ company_id: newCompany.id }).eq('id', data.id);
+              setProjects(prev => prev.map(p => p.id === data.id ? { ...p, company_id: newCompany.id } : p));
+              setCompanies(prev => [...prev, newCompany].sort((a, b) => a.name.localeCompare(b.name)));
+            }
+          }
+        }
+      }
     }
 
     setSaving(false);
@@ -416,20 +479,45 @@ export function SalesHistory() {
                           {project.business_number && <><span className="text-gray-400">•</span><span>{project.business_number}</span></>}
                         </div>
                         {(project.min_amount != null || project.max_amount != null) && (
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="text-sm text-gray-600">
-                              <span className="font-medium text-gray-700">예상 매출액:</span> {formatAmount(project.min_amount)}원 ~ {formatAmount(project.max_amount)}원
+                          <div className="mb-2">
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm text-gray-600">
+                                <span className="font-medium text-gray-700">예상 매출액:</span> {formatAmount(project.min_amount)}원 ~ {formatAmount(project.max_amount)}원
+                              </div>
+                              {aiEstimateResult[project.id] && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                                  <Brain className="w-3 h-3" />AI 산정됨
+                                </span>
+                              )}
+                              {aiEstimating[project.id] && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-500 rounded-full text-xs">
+                                  <Brain className="w-3 h-3 animate-pulse" />산정 중...
+                                </span>
+                              )}
                             </div>
-                            {aiEstimateResult[project.id] && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-                                <Brain className="w-3 h-3" />AI 산정됨
-                              </span>
-                            )}
-                            {aiEstimating[project.id] && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-500 rounded-full text-xs">
-                                <Brain className="w-3 h-3 animate-pulse" />산정 중...
-                              </span>
-                            )}
+                            {/* 납금 일정 미리보기 */}
+                            {(() => {
+                              const note = paymentNoteMap[project.id];
+                              if (!note?.estimated_amount) return null;
+                              const items = [
+                                { label: '선금', date: note.deposit_date, pct: note.deposit_pct, color: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
+                                { label: '중도금', date: note.interim_date,  pct: note.interim_pct,  color: 'bg-blue-50 border-blue-200 text-blue-700'      },
+                                { label: '잔금',  date: note.balance_date,  pct: note.balance_pct,  color: 'bg-indigo-50 border-indigo-200 text-indigo-700'  },
+                              ].filter(i => i.date && i.pct);
+                              if (!items.length) return null;
+                              return (
+                                <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                                  {items.map(i => (
+                                    <span key={i.label} className={`inline-flex items-center gap-1 px-2 py-0.5 border rounded text-xs ${i.color}`}>
+                                      <span className="font-bold">{i.label}</span>
+                                      <span>{i.date}</span>
+                                      <span>·</span>
+                                      <span className="font-semibold">{formatAmount(Math.round(note.estimated_amount! * i.pct! / 100))}원</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                         {project.summary && (
@@ -680,7 +768,16 @@ export function SalesHistory() {
                   onChange={e => setSelectedCompanyId(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white">
                   <option value="">기업을 선택하세요 (직접 입력 가능)</option>
-                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {companies.length > 0 && (
+                    <optgroup label="자사 관리 기업">
+                      {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </optgroup>
+                  )}
+                  {companyDataList.length > 0 && (
+                    <optgroup label="기업 정보 수집">
+                      {companyDataList.map(c => <option key={c.id} value={`cd_${c.id}`}>{c.name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
                 {!selectedCompanyId && (
                   <input name="company_name" type="text" placeholder="또는 기업명 직접 입력" defaultValue={editingProject?.company_name}
@@ -714,11 +811,12 @@ export function SalesHistory() {
                     return (
                       <label key={g} className="cursor-pointer">
                         <input type="radio" name="issue_grade" value={g}
-                          defaultChecked={editingProject?.issue_grade === g}
+                          checked={formIssueGrade === g}
+                          onChange={() => setFormIssueGrade(g)}
                           className="sr-only peer" />
                         <div className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg border-2 text-center transition-all
                           peer-checked:border-current peer-checked:shadow-sm border-gray-200 hover:border-gray-300
-                          ${editingProject?.issue_grade === g ? `${meta.color} border-current` : 'bg-white text-gray-600'}`}>
+                          ${formIssueGrade === g ? `${meta.color} border-current` : 'bg-white text-gray-600'}`}>
                           <span className="text-sm font-extrabold">{g}</span>
                           <span className="text-[10px] font-medium">{meta.prob}</span>
                         </div>
@@ -727,10 +825,13 @@ export function SalesHistory() {
                   })}
                 </div>
                 <p className="mt-1.5 text-xs text-gray-400">
-                  {editingProject?.issue_grade ? ISSUE_GRADE_DESC[editingProject.issue_grade] : '등급을 선택하면 설명이 표시됩니다'}
+                  {formIssueGrade ? ISSUE_GRADE_DESC[formIssueGrade] : '등급을 선택하면 설명이 표시됩니다'}
                 </p>
                 <label className="flex items-center gap-1.5 mt-1 text-xs text-gray-500 cursor-pointer">
-                  <input type="radio" name="issue_grade" value="" defaultChecked={!editingProject?.issue_grade} className="accent-gray-400" />
+                  <input type="radio" name="issue_grade" value=""
+                    checked={formIssueGrade === ''}
+                    onChange={() => setFormIssueGrade('')}
+                    className="accent-gray-400" />
                   등급 없음
                 </label>
               </div>

@@ -19,7 +19,7 @@ const STAGE_PALETTE: Record<string, { color: string; bg: string }> = {
 const MONTH_LABELS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
 
 const KPI_CONFIG = [
-  { key: 'totalAmount',   label: '총 매출액',      sub: '거래처 기준 누적',    icon: DollarSign, color: '#6366F1', bg: '#EEF2FF', grad: ['#6366F1','#818CF8'] },
+  { key: 'totalAmount',   label: '총 매출액',      sub: '영업 프로젝트 예상액 합산', icon: DollarSign, color: '#6366F1', bg: '#EEF2FF', grad: ['#6366F1','#818CF8'] },
   { key: 'totalProjects', label: '총 프로젝트',     sub: '전체 영업 프로젝트',   icon: Layers,     color: '#0EA5E9', bg: '#F0F9FF', grad: ['#0EA5E9','#38BDF8'] },
   { key: 'avgDeal',       label: '평균 계약 규모',   sub: '예상 계약액 기준',    icon: TrendingUp, color: '#F59E0B', bg: '#FFFBEB', grad: ['#F59E0B','#FCD34D'] },
   { key: 'successRate',   label: '계약 진행률',     sub: '계약 진행 단계 기준',  icon: Award,      color: '#10B981', bg: '#ECFDF5', grad: ['#10B981','#34D399'] },
@@ -77,7 +77,7 @@ export function SalesDashboard() {
       setLoading(true);
       const [{ data: proj }, { data: comp }, { data: notes }] = await Promise.all([
         supabase.from('sales_projects').select('*'),
-        supabase.from('companies').select('*').order('total_amount', { ascending: false }),
+        supabase.from('companies').select('*'),
         supabase.from('meeting_notes').select('*'),
       ]);
       setProjects(proj ?? []);
@@ -88,7 +88,19 @@ export function SalesDashboard() {
     fetchData();
   }, []);
 
-  const totalAmount   = companies.reduce((s, c) => s + c.total_amount, 0);
+  const companyStatsMap: Record<string, { total_amount: number; total_projects: number }> = {};
+  projects.forEach(p => {
+    if (!p.company_id) return;
+    if (!companyStatsMap[p.company_id]) companyStatsMap[p.company_id] = { total_amount: 0, total_projects: 0 };
+    companyStatsMap[p.company_id].total_amount += p.amount ?? 0;
+    companyStatsMap[p.company_id].total_projects += 1;
+  });
+
+  const sortedCompanies = [...companies].sort(
+    (a, b) => (companyStatsMap[b.id]?.total_amount ?? 0) - (companyStatsMap[a.id]?.total_amount ?? 0)
+  );
+
+  const totalAmount   = projects.reduce((s, p) => s + (p.amount ?? 0), 0);
   const totalProjects = projects.length;
   const withAmt       = projects.filter(p => p.amount != null);
   const avgDeal       = withAmt.length > 0
@@ -152,12 +164,6 @@ export function SalesDashboard() {
         rollingMap[idx].최대예상 += Math.round(baseMax * pct / 100 / 1_000_000);
         rollingMap[idx].최소예상 += Math.round(baseMin * pct / 100 / 1_000_000);
       });
-    } else {
-      const idx = getSlotIdx(p.created_at);
-      if (idx < 0) return;
-      rollingMap[idx].최대예상 += Math.round((p.max_amount ?? 0) / 1_000_000);
-      rollingMap[idx].실제매출 += Math.round((p.amount    ?? 0) / 1_000_000);
-      rollingMap[idx].최소예상 += Math.round((p.min_amount ?? 0) / 1_000_000);
     }
   });
 
@@ -172,8 +178,8 @@ export function SalesDashboard() {
     bg:    STAGE_PALETTE[name]?.bg    ?? '#F8FAFC',
   }));
 
-  const totalPages       = Math.ceil(companies.length / itemsPerPage);
-  const paginatedCompanies = companies.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages       = Math.ceil(sortedCompanies.length / itemsPerPage);
+  const paginatedCompanies = sortedCompanies.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   if (loading) {
     return (
@@ -376,10 +382,10 @@ export function SalesDashboard() {
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-sm font-bold text-gray-900">{fmt(company.total_amount)}원</span>
+                          <span className="text-sm font-bold text-gray-900">{fmt(companyStatsMap[company.id]?.total_amount ?? 0)}원</span>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-sm text-gray-500">{company.total_projects}건</span>
+                          <span className="text-sm text-gray-500">{companyStatsMap[company.id]?.total_projects ?? 0}건</span>
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -398,7 +404,7 @@ export function SalesDashboard() {
 
               <div className="flex items-center justify-between px-6 py-4 border-t border-gray-50">
                 <span className="text-xs text-gray-400">
-                  {companies.length}개 중 {(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, companies.length)}개 표시
+                  {sortedCompanies.length}개 중 {(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, sortedCompanies.length)}개 표시
                 </span>
                 <div className="flex items-center gap-2">
                   <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
